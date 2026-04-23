@@ -73,9 +73,9 @@
 
     <script type="text/babel">
         // ==========================================
-        // APP VERSION: v1.0.20 (Stable UI Restored)
+        // APP VERSION: v1.0.21 (English Menu & External Link Added)
         // ==========================================
-        const APP_VERSION = "1.0.20";
+        const APP_VERSION = "1.0.21";
 
         if (typeof ChartDataLabels !== 'undefined') {
             Chart.register(ChartDataLabels);
@@ -339,8 +339,8 @@
                     <SimpleListEditor title="Region Responsible" dataKey="equipTeams" placeholder="เพิ่มทีม Region..." icon="fa-solid fa-users" />
                     <SimpleListEditor title="Fiber Responsible" dataKey="fiberTeams" placeholder="เพิ่มทีม Fiber..." icon="fa-solid fa-network-wired" />
                     <SimpleListEditor title="Config Responsible" dataKey="configTeams" placeholder="เพิ่มทีม Config..." icon="fa-solid fa-laptop-code" />
-                    <SimpleListEditor title="ทีมงาน PM" dataKey="pmTeams" placeholder="เพิ่ม PM..." icon="fa-solid fa-user-tie" />
-                    <SimpleListEditor title="ลักษณะงาน (Scope)" dataKey="scopeOfWorks" placeholder="เพิ่ม Scope..." icon="fa-solid fa-list-check" />
+                    <SimpleListEditor title="PM" dataKey="pmTeams" placeholder="เพิ่ม PM..." icon="fa-solid fa-user-tie" />
+                    <SimpleListEditor title="Scope of Work" dataKey="scopeOfWorks" placeholder="เพิ่ม Scope..." icon="fa-solid fa-list-check" />
                     <StatusEditor />
                 </div>
             );
@@ -1149,7 +1149,7 @@
                 <div className="space-y-6 max-w-7xl mx-auto w-full">
                     <header className="flex flex-col md:flex-row justify-between md:items-end gap-4 border-b border-slate-200 pb-4">
                         <div>
-                            <h2 className="text-2xl md:text-3xl font-bold text-slate-900"><i className="fa-solid fa-house-chimney text-blue-600 mr-2"></i> ภาพรวมทุกระบบงาน (Main Dashboard)</h2>
+                            <h2 className="text-2xl md:text-3xl font-bold text-slate-900"><i className="fa-solid fa-house-chimney text-blue-600 mr-2"></i> Main Dashboard</h2>
                             <p className="text-sm text-slate-500 mt-1">สรุปจำนวนงานและสถานะความคืบหน้าเบื้องต้นของทุกระบบ</p>
                         </div>
                     </header>
@@ -1182,8 +1182,8 @@
                         <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><i className="fa-solid fa-layer-group text-slate-400 mr-2"></i> แยกตามระบบงาน</h3>
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <SystemCard title="Region Assignment" icon="fa-user-gear" colorClass="bg-blue-600" bgClass="bg-blue-50/30 border-blue-100" stats={s1} />
-                            <SystemCard title="ควบคุมงานสำรวจ" icon="fa-map-location-dot" colorClass="bg-amber-500" bgClass="bg-amber-50/30 border-amber-100" stats={s2} />
-                            <SystemCard title="ออเดอร์ Cross Connect" icon="fa-network-wired" colorClass="bg-emerald-600" bgClass="bg-emerald-50/30 border-emerald-100" stats={s3} />
+                            <SystemCard title="Pre Survey" icon="fa-map-location-dot" colorClass="bg-amber-500" bgClass="bg-amber-50/30 border-amber-100" stats={s2} />
+                            <SystemCard title="Cross Connect Order" icon="fa-network-wired" colorClass="bg-emerald-600" bgClass="bg-emerald-50/30 border-emerald-100" stats={s3} />
                         </div>
                     </div>
                 </div>
@@ -1199,7 +1199,7 @@
                 return (
                     <div className={`bg-${systemMode==='sys2'?'amber':'emerald'}-50 p-10 rounded-2xl text-${systemMode==='sys2'?'amber':'emerald'}-700 font-bold border border-${systemMode==='sys2'?'amber':'emerald'}-200 text-center shadow-sm max-w-3xl mx-auto mt-10`}>
                         <i className={`fa-solid ${systemMode==='sys2'?'fa-chart-pie':'fa-chart-column'} text-6xl mb-4 block opacity-80`}></i>
-                        <h3 className="text-2xl">ภาพรวม {systemMode==='sys2' ? 'ระบบงานสำรวจ' : 'ออเดอร์ Cross Connect'}</h3>
+                        <h3 className="text-2xl">{systemMode==='sys2' ? 'Pre Survey Dashboard' : 'Cross Connect Order Dashboard'}</h3>
                         <p className="font-normal mt-2 opacity-80">ส่วนนี้ยังไม่มีกราฟแสดงผล เนื่องจากโครงสร้างข้อมูลยังไม่สมบูรณ์</p>
                     </div>
                 );
@@ -1259,7 +1259,7 @@
                 <div className="space-y-6 max-w-7xl mx-auto">
                     <header className="flex flex-col md:flex-row justify-between md:items-start gap-4">
                         <div>
-                            <h2 className="text-xl md:text-3xl font-bold text-slate-900">ภาพรวมโครงการ (Region Assignment)</h2>
+                            <h2 className="text-xl md:text-3xl font-bold text-slate-900">Region Assignment Dashboard</h2>
                             <p className="text-xs md:text-sm text-slate-500 mt-1">สรุปข้อมูลจากระบบ Region Assignment (อิงจากวันที่ติดตั้ง)</p>
                         </div>
                         <div className="flex flex-wrap gap-3 bg-white p-3 rounded-xl shadow-sm border border-slate-200 items-center">
@@ -1346,7 +1346,7 @@
             };
             const handleMouseLeave = () => setTooltipData({ visible: false, task: null, x: 0, y: 0 });
 
-            const calendarTitle = systemMode === 'sys1' ? 'ปฏิทินงาน Region Assignment' : systemMode === 'sys2' ? 'ปฏิทินงานสำรวจ' : systemMode === 'sys3' ? 'ปฏิทิน Cross Connect' : 'ปฏิทินรวมทุกระบบงาน';
+            const calendarTitle = systemMode === 'sys1' ? 'Region Assignment Calendar' : systemMode === 'sys2' ? 'Pre Survey Calendar' : systemMode === 'sys3' ? 'Cross Connect Calendar' : 'Calendar All System';
 
             return (
                 <div className="flex flex-col h-full overflow-hidden">
@@ -1365,11 +1365,11 @@
                                         </label>
                                         <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-100 shadow-sm transition-colors hover:bg-amber-100 select-none">
                                             <input type="checkbox" checked={visibleSystems.includes('sys2')} onChange={() => toggleSystem('sys2')} className="w-3.5 h-3.5 cursor-pointer accent-amber-500" />
-                                            2. ควบคุมงานสำรวจ
+                                            2. Pre Survey
                                         </label>
                                         <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 shadow-sm transition-colors hover:bg-emerald-100 select-none">
                                             <input type="checkbox" checked={visibleSystems.includes('sys3')} onChange={() => toggleSystem('sys3')} className="w-3.5 h-3.5 cursor-pointer accent-emerald-600" />
-                                            3. ออเดอร์ Cross Connect
+                                            3. Cross Connect Order
                                         </label>
                                     </div>
                                 )}
@@ -1707,15 +1707,26 @@
                         <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto custom-scrollbar">
                             <SidebarItem id="main_dashboard" icon="fa-solid fa-house-chimney" label="Main Dashboard" />
                             <div className="my-3 border-t border-slate-100"></div>
-                            <SidebarItem id="sys1_root" icon="fa-solid fa-user-gear" label="Region Assignment" subItems={[{ id: 'dashboard_sys1', label: 'ภาพรวม (Dashboard)' }, { id: 'calendar_sys1', label: 'ปฏิทิน (Calendar)' }, { id: 'table_sys1', label: 'ตารางงาน Region' }]} />
-                            <SidebarItem id="sys2_root" icon="fa-solid fa-map-location-dot" label="ควบคุมงานสำรวจ" subItems={[{ id: 'dashboard_sys2', label: 'ภาพรวม (Dashboard)' }, { id: 'calendar_sys2', label: 'ปฏิทิน (Calendar)' }, { id: 'table_sys2', label: 'ตารางงานสำรวจ' }]} />
-                            <SidebarItem id="sys3_root" icon="fa-solid fa-network-wired" label="ออเดอร์ Cross Connect" subItems={[{ id: 'dashboard_sys3', label: 'ภาพรวม (Dashboard)' }, { id: 'calendar_sys3', label: 'ปฏิทิน (Calendar)' }, { id: 'table_sys3', label: 'ตารางออเดอร์' }]} />
+                            <SidebarItem id="sys1_root" icon="fa-solid fa-user-gear" label="Region Assignment" subItems={[{ id: 'dashboard_sys1', label: 'Dashboard' }, { id: 'calendar_sys1', label: 'Calendar' }, { id: 'table_sys1', label: 'Region Tasks' }]} />
+                            <SidebarItem id="sys2_root" icon="fa-solid fa-map-location-dot" label="Pre Survey" subItems={[{ id: 'dashboard_sys2', label: 'Dashboard' }, { id: 'calendar_sys2', label: 'Calendar' }, { id: 'table_sys2', label: 'Pre Survey Tasks' }]} />
+                            <SidebarItem id="sys3_root" icon="fa-solid fa-network-wired" label="Cross Connect Order" subItems={[{ id: 'dashboard_sys3', label: 'Dashboard' }, { id: 'calendar_sys3', label: 'Calendar' }, { id: 'table_sys3', label: 'Cross Connect Tasks' }]} />
                             <div className="my-3 border-t border-slate-100"></div>
-                            <SidebarItem id="combined_calendar" icon="fa-solid fa-calendar-day" label="ปฏิทินรวมทุกระบบงาน" />
+                            <SidebarItem id="combined_calendar" icon="fa-solid fa-calendar-day" label="Calendar All System" />
+
+                            <div className="mt-6 pt-4 border-t border-slate-100">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-2">External Systems</p>
+                                <a href="#" onClick={(e) => { e.preventDefault(); window.open('https://kung0p0p.github.io/Remove-Equipment-Tracking/', '_blank'); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-100 transition-colors shadow-sm group">
+                                    <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-indigo-600 shadow-sm group-hover:scale-110 transition-transform">
+                                        <i className="fa-solid fa-dolly"></i>
+                                    </div>
+                                    <span className="flex-1 text-sm">Remove Equipment</span>
+                                    <i className="fa-solid fa-arrow-up-right-from-square text-[10px] opacity-50"></i>
+                                </a>
+                            </div>
                         </nav>
                         <div className="p-4 border-t border-slate-200 bg-white shrink-0">
                             <button onClick={() => { setActiveTab('master_data'); if(window.innerWidth <= 1024) setIsSidebarOpen(false); }} className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl transition-colors ${activeTab === 'master_data' ? 'bg-blue-50 text-blue-700 font-bold shadow-sm border border-blue-100' : 'text-slate-600 hover:bg-slate-50 font-medium'}`}>
-                                <i className="fa-solid fa-database w-6 text-center text-blue-600"></i> <span>ฐานข้อมูล (Master Data)</span>
+                                <i className="fa-solid fa-database w-6 text-center text-blue-600"></i> <span>Master Data</span>
                             </button>
                         </div>
                     </aside>
@@ -1724,18 +1735,18 @@
                         <header className="p-4 md:p-6 bg-white border-b border-slate-200 shrink-0 flex items-center gap-3">
                             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200 lg:hidden"><i className="fa-solid fa-bars"></i></button>
                             <h2 className="text-xl md:text-2xl font-bold text-slate-800 flex-1">
-                                {activeTab === 'main_dashboard' && 'ภาพรวมทุกระบบงาน (Main Dashboard)'}
-                                {activeTab === 'dashboard_sys1' && 'ภาพรวมระบบ Region Assignment'}
-                                {activeTab === 'dashboard_sys2' && 'ภาพรวมระบบควบคุมงานสำรวจ'}
-                                {activeTab === 'dashboard_sys3' && 'ภาพรวมออเดอร์ Cross Connect'}
-                                {activeTab === 'calendar_sys1' && 'ปฏิทินงาน Region Assignment'}
-                                {activeTab === 'calendar_sys2' && 'ปฏิทินงานสำรวจ'}
-                                {activeTab === 'calendar_sys3' && 'ปฏิทิน Cross Connect'}
-                                {activeTab === 'combined_calendar' && 'ปฏิทินรวมทุกระบบงาน'}
-                                {activeTab === 'table_sys1' && 'ตารางงาน Region Assignment'}
-                                {activeTab === 'table_sys2' && 'ตารางงานสำรวจ'}
-                                {activeTab === 'table_sys3' && 'ตารางออเดอร์ Cross Connect'}
-                                {activeTab === 'master_data' && 'จัดการฐานข้อมูล (Master Data)'}
+                                {activeTab === 'main_dashboard' && 'Main Dashboard'}
+                                {activeTab === 'dashboard_sys1' && 'Region Assignment Dashboard'}
+                                {activeTab === 'dashboard_sys2' && 'Pre Survey Dashboard'}
+                                {activeTab === 'dashboard_sys3' && 'Cross Connect Order Dashboard'}
+                                {activeTab === 'calendar_sys1' && 'Region Assignment Calendar'}
+                                {activeTab === 'calendar_sys2' && 'Pre Survey Calendar'}
+                                {activeTab === 'calendar_sys3' && 'Cross Connect Calendar'}
+                                {activeTab === 'combined_calendar' && 'Calendar All System'}
+                                {activeTab === 'table_sys1' && 'Region Assignment Tasks'}
+                                {activeTab === 'table_sys2' && 'Pre Survey Tasks'}
+                                {activeTab === 'table_sys3' && 'Cross Connect Tasks'}
+                                {activeTab === 'master_data' && 'Master Data'}
                             </h2>
                             {/* Cloud Status Indicator */}
                             <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
@@ -1758,9 +1769,9 @@
                             {activeTab === 'calendar_sys3' && <CalendarView systemMode="sys3" tasksSys1={tasksSys1} tasksSys2={tasksSys2} tasksSys3={tasksSys3} masterData={masterData} />}
                             {activeTab === 'combined_calendar' && <CalendarView systemMode="all" tasksSys1={tasksSys1} tasksSys2={tasksSys2} tasksSys3={tasksSys3} masterData={masterData} />}
                             
-                            {activeTab === 'table_sys1' && <DataTable title="ตารางงาน Region Assignment" columns={sys1Columns} data={tasksSys1} masterData={masterData} onAddClick={() => setOpenModalForm('sys1')} addLabel="มอบหมายงาน" btnClass="bg-blue-600 hover:bg-blue-700" onUpdateTask={handleUpdateSys1} />}
-                            {activeTab === 'table_sys2' && <DataTable title="ตารางงานสำรวจ" columns={sys2Columns} data={tasksSys2} masterData={masterData} onAddClick={() => setOpenModalForm('sys2')} addLabel="เพิ่มงานสำรวจ" btnClass="bg-amber-600 hover:bg-amber-700" onUpdateTask={handleUpdateSys2} />}
-                            {activeTab === 'table_sys3' && <DataTable title="ตาราง Cross Connect" columns={sys3Columns} data={tasksSys3} masterData={masterData} onAddClick={() => setOpenModalForm('sys3')} addLabel="เพิ่มออเดอร์" btnClass="bg-emerald-600 hover:bg-emerald-700" onUpdateTask={handleUpdateSys3} />}
+                            {activeTab === 'table_sys1' && <DataTable title="Region Assignment Tasks" columns={sys1Columns} data={tasksSys1} masterData={masterData} onAddClick={() => setOpenModalForm('sys1')} addLabel="Assign Task" btnClass="bg-blue-600 hover:bg-blue-700" onUpdateTask={handleUpdateSys1} />}
+                            {activeTab === 'table_sys2' && <DataTable title="Pre Survey Tasks" columns={sys2Columns} data={tasksSys2} masterData={masterData} onAddClick={() => setOpenModalForm('sys2')} addLabel="Add Survey" btnClass="bg-amber-600 hover:bg-amber-700" onUpdateTask={handleUpdateSys2} />}
+                            {activeTab === 'table_sys3' && <DataTable title="Cross Connect Tasks" columns={sys3Columns} data={tasksSys3} masterData={masterData} onAddClick={() => setOpenModalForm('sys3')} addLabel="Add Order" btnClass="bg-emerald-600 hover:bg-emerald-700" onUpdateTask={handleUpdateSys3} />}
                             
                             {activeTab === 'master_data' && (
                                 <div className="flex flex-col gap-4">
