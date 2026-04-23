@@ -1,0 +1,1810 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MASS - Management And Service System (Cloud Sync)</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Chart.js และ DataLabels -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+
+    <!-- Firebase SDK (ES Modules) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Expose Firebase to React context
+        window.FirebaseLib = {
+            initializeApp, getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken,
+            getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot
+        };
+    </script>
+
+    <style>
+        body { font-family: 'Prompt', sans-serif; background-color: #f8fafc; margin: 0; padding: 0; overflow: hidden; }
+        #root { height: 100%; }
+        
+        .table-container::-webkit-scrollbar { height: 8px; width: 8px; }
+        .table-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .table-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .th-content { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 16px; }
+        .sortable-header { cursor: pointer; transition: background 0.2s; position: relative; }
+        .sortable-header:hover { background-color: #334155 !important; }
+        
+        .sticky-col-header { position: sticky; z-index: 50; outline: 1px solid #334155; }
+        .sticky-col-cell { position: sticky; z-index: 20; background-color: #ffffff; outline: 1px solid #e2e8f0; }
+        tr:hover .sticky-col-cell { background-color: #f8fafc; }
+        
+        /* Modal Animation */
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .modal-animate { animation: fadeInScale 0.2s ease-out forwards; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // ==========================================
+        // APP VERSION: v1.0.20 (Stable UI Restored)
+        // ==========================================
+        const APP_VERSION = "1.0.20";
+
+        if (typeof ChartDataLabels !== 'undefined') {
+            Chart.register(ChartDataLabels);
+        }
+
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // Firebase Global Instances
+        let app, auth, db, appId;
+
+        // Error Boundary
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            componentDidCatch(error, errorInfo) {
+                console.error("React Error Boundary Caught:", error, errorInfo);
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="flex flex-col items-center justify-center w-full h-screen bg-slate-50 p-8 text-center">
+                            <i className="fa-solid fa-triangle-exclamation text-6xl text-red-500 mb-4"></i>
+                            <h2 className="text-2xl font-bold text-slate-800 mb-2">เกิดข้อผิดพลาดในการแสดงผล (ระบบขัดข้อง)</h2>
+                            <p className="text-slate-500 mb-6 max-w-lg break-words text-sm border p-4 bg-white rounded-lg shadow-inner">
+                                {this.state.error && this.state.error.toString()}
+                            </p>
+                            <button onClick={() => window.location.reload()} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md">
+                                <i className="fa-solid fa-rotate-right mr-2"></i> รีเฟรชหน้าเว็บ
+                            </button>
+                        </div>
+                    );
+                }
+                return this.props.children; 
+            }
+        }
+
+        // ==========================================
+        // Helpers
+        // ==========================================
+        const monthNames = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+        
+        const parseThaiDateTime = (dtStr) => {
+            if(!dtStr) return null;
+            const parts = dtStr.trim().split(' ');
+            if(parts.length === 0) return null;
+            const dateParts = parts[0].split('/');
+            if(dateParts.length === 3) {
+                let d = parseInt(dateParts[0], 10);
+                let m = parseInt(dateParts[1], 10) - 1;
+                let y = parseInt(dateParts[2], 10);
+                if (y > 2500) y -= 543;
+                return new Date(y, m, d);
+            }
+            const fallback = new Date(dtStr);
+            return isNaN(fallback.getTime()) ? null : fallback;
+        };
+
+        const hexToRgbA = (hex, alpha) => {
+            if (!hex || !hex.startsWith('#')) return hex;
+            let c = hex.substring(1).split('');
+            if (c.length === 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+            if (c.length !== 6) return hex;
+            let r = parseInt(c.slice(0, 2).join(''), 16);
+            let g = parseInt(c.slice(2, 4).join(''), 16);
+            let b = parseInt(c.slice(4, 6).join(''), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        };
+
+        const getDaysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+        const getFirstDayOfMonth = (y, m) => new Date(y, m, 1).getDay();
+
+        // ==========================================
+        // Default Master Data (Fallback)
+        // ==========================================
+        const defaultMasterData = {
+            equipTeams: ["Team A", "Team B", "Team C", "Team D"],
+            fiberTeams: ["Fiber X", "Fiber Y", "Fiber Z"],
+            configTeams: ["Config 1", "Config 2"],
+            pmTeams: ["PM John", "PM Jane", "PM Peter"],
+            scopeOfWorks: [
+                "Install New", "Remove", "Migration", "Preventive Maintenance", "กำหนดเวลาเอง (Custom)", "อื่นๆ (Other)"
+            ],
+            statuses: [
+                {name: "รอรับงาน", bg: "#f59e0b", text: "#b45309"}, 
+                {name: "กำลังดำเนินการ", bg: "#3b82f6", text: "#1e3a8a"}, 
+                {name: "สำเร็จ", bg: "#10b981", text: "#065f46"}, 
+                {name: "ยกเลิก", bg: "#ef4444", text: "#991b1b"} 
+            ]
+        };
+
+        const getScopeDuration = (scopeName) => {
+            const s = (scopeName || '').toLowerCase();
+            if (s.includes('install')) return 120;
+            if (s.includes('remove')) return 60;
+            if (s.includes('migration')) return 180;
+            if (s.includes('preventive')) return 90;
+            return 60; 
+        };
+
+        // ==========================================
+        // UI Components
+        // ==========================================
+        const MultiSelect = ({ options = [], selected = [], onChange, placeholder = "ทั้งหมด" }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const dropdownRef = useRef(null);
+            useEffect(() => {
+                const handleClickOutside = (event) => { if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false); };
+                document.addEventListener("mousedown", handleClickOutside);
+                return () => document.removeEventListener("mousedown", handleClickOutside);
+            }, []);
+            const toggleOption = (opt) => { if (selected.includes(opt)) onChange(selected.filter(x => x !== opt)); else onChange([...selected, opt]); };
+            return (
+                <div className="relative inline-block text-left w-full h-auto" ref={dropdownRef}>
+                    <button type="button" onClick={() => setIsOpen(!isOpen)} className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs md:text-sm bg-white flex items-center justify-between w-full shadow-sm hover:bg-slate-50 transition-colors h-[38px] min-w-[150px]">
+                        <span className="truncate pr-2 text-slate-700 font-medium">{selected?.length === 0 ? placeholder : `เลือกแล้ว ${selected?.length || 0} รายการ`}</span>
+                        <i className={`fa-solid fa-chevron-down text-[10px] md:text-xs text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}></i>
+                    </button>
+                    {isOpen && (
+                        <div className="absolute left-0 mt-2 w-full min-w-[200px] rounded-xl shadow-xl bg-white ring-1 ring-black ring-opacity-5 z-[5000] overflow-hidden">
+                            <div className="max-h-[50vh] sm:max-h-60 overflow-y-auto py-2 custom-scrollbar">
+                                {options?.map(opt => (
+                                    <label key={opt} className="flex items-center px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors">
+                                        <input type="checkbox" checked={selected?.includes(opt)} onChange={() => toggleOption(opt)} className="mr-3 rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer" />
+                                        <span className="text-sm text-slate-600 truncate" title={opt}>{opt}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const ChartComponent = ({ type, data, options }) => {
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+            useEffect(() => {
+                if (chartInstance.current) chartInstance.current.destroy();
+                const ctx = chartRef.current.getContext('2d');
+                chartInstance.current = new Chart(ctx, { type, data, options });
+                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+            }, [type, data, options]);
+            return <canvas ref={chartRef} style={{ width: '100%', height: '100%' }} />;
+        };
+
+        const FormModal = ({ isOpen, onClose, title, iconClass, colorTheme, children }) => {
+            if (!isOpen) return null;
+            const themeMap = {
+                blue: { text: 'text-blue-800', icon: 'text-blue-600', border: 'border-blue-100', bg: 'bg-blue-50' },
+                amber: { text: 'text-amber-800', icon: 'text-amber-600', border: 'border-amber-100', bg: 'bg-amber-50' },
+                emerald: { text: 'text-emerald-800', icon: 'text-emerald-600', border: 'border-emerald-100', bg: 'bg-emerald-50' },
+            };
+            const theme = themeMap[colorTheme] || themeMap.blue;
+
+            return (
+                <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm transition-opacity">
+                    <div className="modal-animate bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden">
+                        <div className={`px-5 py-4 border-b border-slate-200 flex justify-between items-center ${theme.bg} shrink-0`}>
+                            <h2 className={`text-lg font-bold flex items-center ${theme.text}`}>
+                                <i className={`${iconClass} ${theme.icon} mr-3 text-xl`}></i> {title}
+                            </h2>
+                            <button onClick={onClose} className="w-8 h-8 flex justify-center items-center rounded-full bg-white hover:bg-slate-200 text-slate-500 shadow-sm border transition-colors">
+                                <i className="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar bg-slate-50/50">
+                            {children}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // Sub-Components
+        // ==========================================
+        const MasterDataView = ({ masterData }) => {
+            const { setDoc, doc } = window.FirebaseLib;
+
+            // Update Firebase directly
+            const updateDataInFirebase = async (key, val) => {
+                const newData = { ...masterData, [key]: val };
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'masterData'), newData);
+                } catch (e) { console.error("Error updating master data:", e); window.customAlert("เกิดข้อผิดพลาดในการบันทึกข้อมูล"); }
+            };
+
+            const SimpleListEditor = ({ title, dataKey, placeholder, icon }) => {
+                const [input, setInput] = useState('');
+                const list = masterData[dataKey] || [];
+                const add = () => { if(!input.trim()) return; updateDataInFirebase(dataKey, [...list, input.trim()]); setInput(''); };
+                const remove = (idx) => {
+                    if(window.customConfirm) { window.customConfirm('ยืนยันลบข้อมูลนี้?', () => updateDataInFirebase(dataKey, list.filter((_, i) => i !== idx))); } 
+                    else updateDataInFirebase(dataKey, list.filter((_, i) => i !== idx));
+                };
+
+                return (
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full">
+                        <h3 className="font-bold text-slate-800 mb-3 flex items-center"><i className={`${icon} text-blue-600 mr-2`}></i>{title}</h3>
+                        <div className="flex gap-2 mb-3">
+                            <input type="text" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&add()} placeholder={placeholder} className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            <button onClick={add} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition-colors"><i className="fa-solid fa-plus"></i></button>
+                        </div>
+                        <ul className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-1 max-h-48 min-h-[120px]">
+                            {list.length === 0 && <li className="text-xs text-center text-slate-400 py-4">ไม่มีข้อมูล</li>}
+                            {list.map((item, idx) => (
+                                <li key={idx} className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 text-sm group hover:border-slate-200 transition-colors">
+                                    <span className="text-slate-700 font-medium truncate pr-2">{item}</span>
+                                    <button onClick={()=>remove(idx)} className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><i className="fa-solid fa-trash-can"></i></button>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                );
+            };
+
+            const StatusEditor = () => {
+                const list = masterData.statuses || [];
+                const add = () => updateDataInFirebase('statuses', [...list, {name: 'สถานะใหม่', bg: '#e2e8f0', text: '#475569'}]);
+                const update = (idx, field, val) => { const newList = [...list]; newList[idx][field] = val; updateDataInFirebase('statuses', newList); };
+                const remove = (idx) => {
+                    if(window.customConfirm) window.customConfirm('ยืนยันลบสถานะนี้?', () => updateDataInFirebase('statuses', list.filter((_, i) => i !== idx))); 
+                    else updateDataInFirebase('statuses', list.filter((_, i) => i !== idx));
+                };
+
+                return (
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm md:col-span-2 flex flex-col h-full">
+                        <div className="flex justify-between items-center mb-3 border-b pb-2">
+                            <h3 className="font-bold text-slate-800 flex items-center"><i className="fa-solid fa-tags text-blue-600 mr-2"></i> ตั้งค่าสถานะงานและสี</h3>
+                            <button onClick={add} className="text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-bold border border-blue-200 transition-colors"><i className="fa-solid fa-plus"></i> เพิ่มสถานะ</button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 overflow-y-auto custom-scrollbar pr-1 max-h-[300px]">
+                            {list.length === 0 && <div className="col-span-1 sm:col-span-2 text-center text-xs text-slate-400 py-4">ไม่มีสถานะ</div>}
+                            {list.map((st, idx) => (
+                                <div key={idx} className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg relative group hover:border-blue-200 transition-colors">
+                                    <div className="flex gap-2 items-center">
+                                        <input type="text" value={st.name} onChange={e=>update(idx, 'name', e.target.value)} placeholder="ชื่อสถานะ" className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500 font-bold text-slate-700" />
+                                        <button onClick={()=>remove(idx)} className="text-slate-300 hover:text-red-500 px-1 transition-colors"><i className="fa-solid fa-trash-can"></i></button>
+                                    </div>
+                                    <div className="flex gap-3 items-center justify-between mt-1">
+                                        <div className="flex gap-3">
+                                            <div className="flex items-center gap-1.5 bg-white px-2 py-1 border rounded-md"><span className="text-[10px] text-slate-500 font-bold">พื้นหลัง</span><input type="color" value={st.bg} onChange={e=>update(idx, 'bg', e.target.value)} className="w-5 h-5 p-0 border-0 cursor-pointer rounded" /></div>
+                                            <div className="flex items-center gap-1.5 bg-white px-2 py-1 border rounded-md"><span className="text-[10px] text-slate-500 font-bold">ตัวอักษร</span><input type="color" value={st.text} onChange={e=>update(idx, 'text', e.target.value)} className="w-5 h-5 p-0 border-0 cursor-pointer rounded" /></div>
+                                        </div>
+                                        <div className="ml-auto"><span className="text-xs px-2 py-1 rounded-md border font-bold" style={{backgroundColor: hexToRgbA(st.bg, 0.2), color: st.text, borderColor: st.bg}}>{st.name || 'ตัวอย่าง'}</span></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <SimpleListEditor title="Region Responsible" dataKey="equipTeams" placeholder="เพิ่มทีม Region..." icon="fa-solid fa-users" />
+                    <SimpleListEditor title="Fiber Responsible" dataKey="fiberTeams" placeholder="เพิ่มทีม Fiber..." icon="fa-solid fa-network-wired" />
+                    <SimpleListEditor title="Config Responsible" dataKey="configTeams" placeholder="เพิ่มทีม Config..." icon="fa-solid fa-laptop-code" />
+                    <SimpleListEditor title="ทีมงาน PM" dataKey="pmTeams" placeholder="เพิ่ม PM..." icon="fa-solid fa-user-tie" />
+                    <SimpleListEditor title="ลักษณะงาน (Scope)" dataKey="scopeOfWorks" placeholder="เพิ่ม Scope..." icon="fa-solid fa-list-check" />
+                    <StatusEditor />
+                </div>
+            );
+        };
+
+        const AssignSys1Form = ({ tasksSys1, masterData, onClose, isModal = false }) => {
+            const { setDoc, doc } = window.FirebaseLib;
+            
+            const [form, setForm] = useState({
+                dateTime: new Date().toLocaleString('th-TH', { hour12: false }),
+                installDate: '',
+                startTime: '09:00',
+                endTime: '10:00',
+                helperEndTime: '10:00',
+                equipTeams: [], equipTeamsSub: [], 
+                fiberTeams: [], configTeam: '', pmTeam: '',
+                cid: '', customerName: '', scopeOfWork: '', otherScopeDetail: '',
+                customerContact: '', location: '', 
+                status: 'รอรับงาน', remark: ''
+            });
+
+            const isCustomScope = (scopeName) => {
+                const s = scopeName || '';
+                return s.includes('กำหนดเวลาเอง') || s.includes('Custom') || s.includes('อื่นๆ');
+            };
+
+            const disableEndTimeField = !isCustomScope(form.scopeOfWork) && form.scopeOfWork !== '';
+
+            const handleScopeChange = (scopeName) => {
+                if (!isCustomScope(scopeName) && scopeName !== '') {
+                    const duration = getScopeDuration(scopeName);
+                    if (form.startTime) {
+                        const [h, m] = form.startTime.split(':').map(Number);
+                        const date = new Date();
+                        date.setHours(h, m + duration);
+                        const newEndTime = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                        setForm({ ...form, scopeOfWork: scopeName, endTime: newEndTime });
+                    } else {
+                        setForm({ ...form, scopeOfWork: scopeName });
+                    }
+                } else {
+                    setForm({ ...form, scopeOfWork: scopeName });
+                }
+            };
+
+            const handleStartTimeChange = (time) => {
+                const [h, m] = time.split(':').map(Number);
+                
+                const hDate = new Date();
+                hDate.setHours(h, m + 60);
+                const newHelperEndTime = `${String(hDate.getHours()).padStart(2, '0')}:${String(hDate.getMinutes()).padStart(2, '0')}`;
+
+                if (!isCustomScope(form.scopeOfWork) && form.scopeOfWork !== '') {
+                    const duration = getScopeDuration(form.scopeOfWork);
+                    const date = new Date();
+                    date.setHours(h, m + duration);
+                    const newEndTime = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                    setForm({ ...form, startTime: time, endTime: newEndTime, helperEndTime: newHelperEndTime });
+                } else {
+                    setForm({ ...form, startTime: time, helperEndTime: newHelperEndTime });
+                }
+            };
+
+            const timeToMin = (t) => {
+                if(!t) return 0;
+                const [h, m] = t.split(':').map(Number);
+                return h * 60 + m;
+            };
+
+            const handleSubmit = async () => {
+                if(!form.scopeOfWork) return window.customAlert('กรุณาเลือก Scope of Work');
+                if(form.scopeOfWork === 'อื่นๆ (Other)' && !form.otherScopeDetail.trim()) return window.customAlert('กรุณาระบุรายละเอียดสำหรับ Scope งาน "อื่นๆ"');
+                if(!form.cid || !form.installDate || !form.startTime || !form.endTime) return window.customAlert('กรุณากรอกข้อมูลสำคัญให้ครบ (CID, วันที่ และเวลาติดตั้ง)');
+
+                const newStartMin = timeToMin(form.startTime);
+                const newEndMin = timeToMin(form.endTime);
+                const newHelperEndMin = timeToMin(form.helperEndTime);
+
+                if (newStartMin >= newEndMin) return window.customAlert('❌ เวลาสิ้นสุดงานต้องมากกว่าเวลาเริ่มงาน');
+                if (newStartMin >= newHelperEndMin) return window.customAlert('❌ เวลาสิ้นสุด(ผู้ช่วย) ต้องมากกว่าเวลาเริ่มงาน');
+
+                const allNewPrimaryEquip = [...form.equipTeams];
+                const allNewSecondaryEquip = [...form.equipTeamsSub];
+
+                let conflictDetails = null;
+
+                for (let task of tasksSys1) {
+                    if (task.installDate !== form.installDate) continue;
+                    if (!task.startTime || !task.endTime) continue;
+
+                    const tStart = timeToMin(task.startTime);
+                    const tEnd = timeToMin(task.endTime);
+                    const tHelperEnd = task.helperEndTime ? timeToMin(task.helperEndTime) : tEnd;
+
+                    const tStartWithGap = tStart - 60;
+
+                    const taskPrimaryEquip = [...(task.equipTeams || [])];
+                    const taskSecondaryEquip = [...(task.equipTeamsSub || [])];
+
+                    for (let team of allNewPrimaryEquip) {
+                        const isTaskPrimary = taskPrimaryEquip.includes(team);
+                        const isTaskSecondary = taskSecondaryEquip.includes(team);
+                        if (!isTaskPrimary && !isTaskSecondary) continue;
+
+                        const checkTaskEnd = isTaskPrimary ? tEnd : tHelperEnd;
+                        const checkTaskEndWithGap = checkTaskEnd + 60;
+
+                        if ((newStartMin < checkTaskEndWithGap) && (newEndMin > tStartWithGap)) {
+                            conflictDetails = { task, team, role: 'Main', conflictWith: isTaskPrimary ? 'Main' : 'Sub' };
+                            break;
+                        }
+                    }
+                    if (conflictDetails) break;
+
+                    for (let team of allNewSecondaryEquip) {
+                        const isTaskPrimary = taskPrimaryEquip.includes(team);
+                        const isTaskSecondary = taskSecondaryEquip.includes(team);
+                        if (!isTaskPrimary && !isTaskSecondary) continue;
+
+                        const checkTaskEnd = isTaskPrimary ? tEnd : tHelperEnd;
+                        const checkTaskEndWithGap = checkTaskEnd + 60;
+
+                        if ((newStartMin < checkTaskEndWithGap) && (newHelperEndMin > tStartWithGap)) {
+                            conflictDetails = { task, team, role: 'Sub', conflictWith: isTaskPrimary ? 'Main' : 'Sub' };
+                            break;
+                        }
+                    }
+                    if (conflictDetails) break;
+                }
+
+                if (conflictDetails) {
+                    const conflictEndTime = conflictDetails.conflictWith === 'Main' ? conflictDetails.task.endTime : (conflictDetails.task.helperEndTime || conflictDetails.task.endTime);
+                    return window.customAlert(`❌ ไม่สามารถมอบหมายงานได้!\n\nทีม [${conflictDetails.team}] (ในตำแหน่ง ${conflictDetails.role}) ติดงานอื่น หรืออยู่ในช่วงเวลาเดินทาง (เว้น 1 ชั่วโมง)\n\nลูกค้ารายที่ติดงาน: ${conflictDetails.task.customerName || conflictDetails.task.cid}\nเวลาทำงาน: ${conflictDetails.task.startTime} - ${conflictEndTime}`);
+                }
+
+                // --- FIREBASE SAVE ---
+                try {
+                    const taskId = `sys1_${Date.now()}`;
+                    const newTask = { id: taskId, ...form, createdAt: new Date().toISOString() };
+                    
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasksSys1', taskId), newTask);
+                    
+                    window.customAlert('✅ บันทึกงาน Region Assignment ขึ้น Cloud สำเร็จ!');
+                    setForm({ dateTime: new Date().toLocaleString('th-TH', { hour12: false }), installDate: '', startTime: '09:00', endTime: '10:00', helperEndTime: '10:00', equipTeams: [], equipTeamsSub: [], fiberTeams: [], configTeam: '', cid: '', customerName: '', scopeOfWork: '', otherScopeDetail: '', customerContact: '', location: '', pmTeam: '', status: 'รอรับงาน', remark: '' });
+                    if(onClose) onClose();
+                } catch (error) {
+                    console.error("Error adding document: ", error);
+                    window.customAlert("❌ เกิดข้อผิดพลาดในการบันทึกข้อมูลขึ้น Cloud");
+                }
+            };
+
+            const content = (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2 flex justify-end items-center mb-[-10px]">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">วันที่บันทึก (Record Date): {form.dateTime}</span>
+                    </div>
+
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-5 gap-4 bg-blue-50 p-4 rounded-xl border border-blue-100">
+                        <div className="md:col-span-2 flex flex-col gap-2">
+                            <div>
+                                <label className="text-xs font-bold text-blue-700 uppercase">Scope of Work <span className="text-red-500">*</span></label>
+                                <select value={form.scopeOfWork} onChange={e=>handleScopeChange(e.target.value)} className="w-full mt-1 px-3 py-2 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 text-slate-700">
+                                    <option value="">- เลือก Scope -</option>
+                                    {masterData.scopeOfWorks.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            </div>
+                            {form.scopeOfWork === 'อื่นๆ (Other)' && (
+                                <div className="mt-1">
+                                    <input type="text" value={form.otherScopeDetail} onChange={e=>setForm({...form, otherScopeDetail: e.target.value})} placeholder="โปรดระบุรายละเอียดงาน..." className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" required />
+                                </div>
+                            )}
+                        </div>
+                        <div className="md:col-span-1"><label className="text-[11px] font-bold text-blue-700 uppercase">วันที่ติดตั้ง <span className="text-red-500">*</span></label><input type="date" value={form.installDate} onChange={e=>setForm({...form, installDate: e.target.value})} className="w-full mt-1 px-3 py-2 border border-blue-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white" required /></div>
+                        <div className="md:col-span-1"><label className="text-[11px] font-bold text-blue-700 uppercase">เวลาเริ่ม <span className="text-red-500">*</span></label><input type="time" value={form.startTime} onChange={e=>handleStartTimeChange(e.target.value)} className="w-full mt-1 px-3 py-2 border border-blue-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white" required /></div>
+                        <div className="md:col-span-1"><label className="text-[11px] font-bold text-blue-700 uppercase">สิ้นสุด(หลัก) <span className="text-red-500">*</span></label><input type="time" value={form.endTime} onChange={e=>setForm({...form, endTime: e.target.value})} disabled={disableEndTimeField} className={`w-full mt-1 px-3 py-2 border border-blue-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 ${disableEndTimeField ? 'bg-slate-100 cursor-not-allowed text-slate-500' : 'bg-white'}`} required /></div>
+                    </div>
+
+                    {/* Teams Row */}
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                            <p className="text-sm font-bold text-slate-700 border-b pb-1 mb-3"><i className="fa-solid fa-users text-blue-500 mr-2"></i>Region Responsible</p>
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Main (เต็มเวลา)</label>
+                                    <MultiSelect options={masterData.equipTeams.filter(t => !form.equipTeamsSub.includes(t))} selected={form.equipTeams} onChange={v => setForm({...form, equipTeams: v})} placeholder="เลือกทีม Main" />
+                                    {form.equipTeams.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                            {form.equipTeams.map(t => <span key={t} className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded border border-blue-200 font-semibold">{t}</span>)}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="pt-2 border-t border-slate-100">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Sub (Part-time)</label>
+                                    <MultiSelect options={masterData.equipTeams.filter(t => !form.equipTeams.includes(t))} selected={form.equipTeamsSub} onChange={v => setForm({...form, equipTeamsSub: v})} placeholder="เลือกทีม Sub" />
+                                    
+                                    {form.equipTeamsSub.length > 0 && (
+                                        <div className="mt-2 bg-sky-50 p-2 rounded-lg border border-sky-100 modal-animate">
+                                            <div className="flex flex-wrap gap-1 mb-2">
+                                                {form.equipTeamsSub.map(t => <span key={t} className="bg-sky-100 text-sky-700 text-[10px] px-1.5 py-0.5 rounded border border-sky-200 font-semibold">{t}</span>)}
+                                            </div>
+                                            <div className="flex items-center justify-between border-t border-sky-100 pt-2">
+                                                <label className="text-[10px] font-bold text-sky-700 uppercase">เวลาสิ้นสุด (ทีม Sub) <span className="text-red-500">*</span></label>
+                                                <input type="time" value={form.helperEndTime} onChange={e=>setForm({...form, helperEndTime: e.target.value})} className="w-32 px-2 py-1 border border-sky-200 rounded text-xs outline-none focus:ring-2 focus:ring-sky-500 bg-white" required />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                            <p className="text-sm font-bold text-slate-700 border-b pb-1 mb-3"><i className="fa-solid fa-users-gear text-slate-400 mr-2"></i>ทีมงานสนับสนุนอื่นๆ</p>
+                            <div className="space-y-4 flex-1">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Fiber Responsible</label>
+                                    <MultiSelect options={masterData.fiberTeams} selected={form.fiberTeams} onChange={v => setForm({...form, fiberTeams: v})} placeholder="เลือกทีม Fiber" />
+                                    {form.fiberTeams.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                            {form.fiberTeams.map(t => <span key={t} className="bg-slate-200 text-slate-700 text-[10px] px-1.5 py-0.5 rounded border border-slate-300 font-semibold">{t}</span>)}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="space-y-3 pt-2 border-t border-slate-100">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Config Responsible</label>
+                                        <select value={form.configTeam} onChange={e=>setForm({...form, configTeam: e.target.value})} className="w-full h-[38px] border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"><option value="">- เลือกทีม -</option>{masterData.configTeams.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">PM (ผู้รับผิดชอบ)</label>
+                                        <select value={form.pmTeam} onChange={e=>setForm({...form, pmTeam: e.target.value})} className="w-full h-[38px] border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"><option value="">- เลือก PM -</option>{masterData.pmTeams.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="md:col-span-1">
+                            <label className="text-xs font-bold text-slate-500 uppercase">CIDs <span className="text-red-500">*</span></label>
+                            <input type="text" value={form.cid} onChange={e=>setForm({...form, cid: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm font-bold text-blue-700 outline-none focus:border-blue-500 border-slate-300" placeholder="ระบุ CID" />
+                        </div>
+                        <div className="md:col-span-3">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Customer Name</label>
+                            <input type="text" value={form.customerName} onChange={e=>setForm({...form, customerName: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm outline-none focus:border-blue-500 border-slate-300" placeholder="ระบุชื่อลูกค้า..." />
+                        </div>
+                    </div>
+
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">Address</label><input type="text" value={form.location} onChange={e=>setForm({...form, location: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm outline-none focus:border-blue-500 border-slate-300" /></div>
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">Customer Contact</label><input type="text" value={form.customerContact} onChange={e=>setForm({...form, customerContact: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm outline-none focus:border-blue-500 border-slate-300" /></div>
+
+                    <div className="md:col-span-2"><label className="text-xs font-bold text-slate-500 uppercase">Remark</label><textarea rows="2" value={form.remark} onChange={e=>setForm({...form, remark: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm outline-none focus:border-blue-500 border-slate-300"></textarea></div>
+                    
+                    <div className="md:col-span-2 text-right border-t pt-4 mt-2">
+                        <button type="button" onClick={handleSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-lg shadow-sm transition-colors"><i className="fa-solid fa-cloud-arrow-up mr-2"></i> บันทึกขึ้น Cloud</button>
+                    </div>
+                </div>
+            );
+
+            return isModal ? content : (
+                <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 max-w-4xl mx-auto w-full">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4 border-b pb-3"><i className="fa-solid fa-clipboard-user text-blue-600 mr-2"></i> ฟอร์ม Assign งาน Region</h2>
+                    {content}
+                </div>
+            );
+        };
+
+        const AssignSys2Form = ({ masterData, onClose, isModal = false }) => {
+            const { setDoc, doc } = window.FirebaseLib;
+            const [form, setForm] = useState({ date: new Date().toLocaleString('th-TH', { hour12: false }), surveyId: '', location: '', surveyor: '', status: 'รอรับงาน' });
+            
+            const handleSubmit = async () => {
+                if(!form.surveyId) return window.customAlert('กรุณาระบุ Survey ID');
+                
+                try {
+                    const taskId = `sys2_${Date.now()}`;
+                    const newTask = { id: taskId, ...form };
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasksSys2', taskId), newTask);
+                    
+                    window.customAlert('✅ บันทึกงานสำรวจขึ้น Cloud สำเร็จ!');
+                    setForm({ date: new Date().toLocaleString('th-TH', { hour12: false }), surveyId: '', location: '', surveyor: '', status: 'รอรับงาน' });
+                    if(onClose) onClose();
+                } catch (e) {
+                    console.error(e);
+                    window.customAlert("❌ เกิดข้อผิดพลาดในการบันทึก");
+                }
+            };
+            
+            const content = (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2"><label className="text-xs font-bold text-slate-500 uppercase">วันที่/เวลา</label><input type="text" value={form.date} disabled className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-slate-50 text-slate-500" /></div>
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">Survey ID <span className="text-red-500">*</span></label><input type="text" value={form.surveyId} onChange={e=>setForm({...form, surveyId: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm border-amber-300 focus:ring-amber-500 outline-none" required /></div>
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">Location</label><input type="text" value={form.location} onChange={e=>setForm({...form, location: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-amber-500 border-slate-300 outline-none" /></div>
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">ทีมสำรวจ (Surveyor)</label><input type="text" value={form.surveyor} onChange={e=>setForm({...form, surveyor: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-amber-500 border-slate-300 outline-none" /></div>
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">สถานะ</label><select value={form.status} onChange={e=>setForm({...form, status: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-amber-500 outline-none border-slate-300">{masterData.statuses.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}</select></div>
+                    <div className="md:col-span-2 text-right border-t pt-4 mt-2"><button type="button" onClick={handleSubmit} className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-8 rounded-lg shadow-sm"><i className="fa-solid fa-cloud-arrow-up mr-2"></i> บันทึกงานขึ้น Cloud</button></div>
+                </div>
+            );
+
+            return isModal ? content : <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 max-w-2xl mx-auto w-full"><h2 className="text-lg font-bold text-slate-800 mb-4 border-b pb-3"><i className="fa-solid fa-map-location-dot text-amber-600 mr-2"></i> บันทึกงานสำรวจ</h2>{content}</div>;
+        };
+
+        const AssignSys3Form = ({ masterData, onClose, isModal = false }) => {
+            const { setDoc, doc } = window.FirebaseLib;
+            const [form, setForm] = useState({ date: new Date().toLocaleString('th-TH', { hour12: false }), cid: '', fromPort: '', toPort: '', status: 'รอรับงาน' });
+            
+            const handleSubmit = async () => {
+                if(!form.cid) return window.customAlert('กรุณาระบุ CID');
+                
+                try {
+                    const taskId = `sys3_${Date.now()}`;
+                    const newTask = { id: taskId, ...form };
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasksSys3', taskId), newTask);
+
+                    window.customAlert('✅ บันทึกออเดอร์ Cross Connect ขึ้น Cloud สำเร็จ!');
+                    setForm({ date: new Date().toLocaleString('th-TH', { hour12: false }), cid: '', fromPort: '', toPort: '', status: 'รอรับงาน' });
+                    if(onClose) onClose();
+                } catch (e) {
+                    console.error(e);
+                    window.customAlert("❌ เกิดข้อผิดพลาดในการบันทึก");
+                }
+            };
+
+            const content = (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2"><label className="text-xs font-bold text-slate-500 uppercase">วันที่เปิดออเดอร์</label><input type="text" value={form.date} disabled className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-slate-50 text-slate-500" /></div>
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">CID <span className="text-red-500">*</span></label><input type="text" value={form.cid} onChange={e=>setForm({...form, cid: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm border-emerald-300 focus:ring-emerald-500 outline-none" required /></div>
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">สถานะ</label><select value={form.status} onChange={e=>setForm({...form, status: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-emerald-500 outline-none border-slate-300">{masterData.statuses.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}</select></div>
+                    <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100 md:col-span-2 grid grid-cols-2 gap-3">
+                        <div><label className="text-xs font-bold text-slate-500 uppercase">จาก Port (From)</label><input type="text" value={form.fromPort} onChange={e=>setForm({...form, fromPort: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm border-slate-300 outline-none focus:border-emerald-500" /></div>
+                        <div><label className="text-xs font-bold text-slate-500 uppercase">ไป Port (To)</label><input type="text" value={form.toPort} onChange={e=>setForm({...form, toPort: e.target.value})} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm border-slate-300 outline-none focus:border-emerald-500" /></div>
+                    </div>
+                    <div className="md:col-span-2 text-right border-t pt-4 mt-2"><button type="button" onClick={handleSubmit} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-8 rounded-lg shadow-sm"><i className="fa-solid fa-cloud-arrow-up mr-2"></i> บันทึกออเดอร์ขึ้น Cloud</button></div>
+                </div>
+            );
+            return isModal ? content : <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 max-w-2xl mx-auto w-full"><h2 className="text-lg font-bold text-slate-800 mb-4 border-b pb-3"><i className="fa-solid fa-network-wired text-emerald-600 mr-2"></i> เปิดออเดอร์ Cross Connect</h2>{content}</div>;
+        };
+
+        // ==========================================
+        // TABLES COMPONENT
+        // ==========================================
+        const DataTable = ({ title, columns, data, masterData, onAddClick, addLabel = "เพิ่มข้อมูล", btnClass = "bg-blue-600 hover:bg-blue-700", onUpdateTask }) => {
+            const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
+            const [pinnedColumns, setPinnedColumns] = useState([]);
+            const [colWidths, setColWidths] = useState({});
+            
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filters, setFilters] = useState({ scopeOfWork: '', equipTeams: '', fiberTeams: '', configTeam: '', pmTeam: '', status: '' });
+            
+            const [editingCell, setEditingCell] = useState(null);
+
+            const getStatusColor = (statusName) => {
+                const found = masterData.statuses.find(s => s.name === statusName);
+                if (found) return { bg: hexToRgbA(found.bg, 0.15), text: found.text, border: found.bg };
+                return { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
+            };
+
+            const processedData = useMemo(() => {
+                let items = [...data];
+                
+                if (searchTerm) {
+                    const lowerSearch = searchTerm.toLowerCase();
+                    items = items.filter(item => Object.values(item).some(val => {
+                        if (Array.isArray(val)) return val.join(' ').toLowerCase().includes(lowerSearch);
+                        return String(val || '').toLowerCase().includes(lowerSearch);
+                    }));
+                }
+
+                if (filters.scopeOfWork) items = items.filter(i => {
+                    let s = i.scopeOfWork === 'อื่นๆ (Other)' && i.otherScopeDetail ? `อื่นๆ: ${i.otherScopeDetail}` : i.scopeOfWork;
+                    if(filters.scopeOfWork === 'อื่นๆ (Other)') return i.scopeOfWork === 'อื่นๆ (Other)';
+                    return s === filters.scopeOfWork;
+                });
+                if (filters.configTeam) items = items.filter(i => i.configTeam === filters.configTeam);
+                if (filters.pmTeam) items = items.filter(i => i.pmTeam === filters.pmTeam);
+                if (filters.status) items = items.filter(i => i.status === filters.status);
+                
+                if (filters.equipTeams) {
+                    items = items.filter(i => {
+                        const m = Array.isArray(i.equipTeams) ? i.equipTeams : [];
+                        const s = Array.isArray(i.equipTeamsSub) ? i.equipTeamsSub : [];
+                        return m.includes(filters.equipTeams) || s.includes(filters.equipTeams);
+                    });
+                }
+                if (filters.fiberTeams) {
+                    items = items.filter(i => Array.isArray(i.fiberTeams) ? i.fiberTeams.includes(filters.fiberTeams) : i.fiberTeams === filters.fiberTeams);
+                }
+
+                if (sortConfig.key !== null) {
+                    items.sort((a, b) => {
+                        let aVal = a[sortConfig.key];
+                        let bVal = b[sortConfig.key];
+                        
+                        if (sortConfig.key === 'timeRange') {
+                            aVal = a.startTime && a.endTime ? `${a.startTime} - ${a.endTime}` : '';
+                            bVal = b.startTime && b.endTime ? `${b.startTime} - ${b.endTime}` : '';
+                        } else if (sortConfig.key === 'scopeOfWork') {
+                            aVal = a.scopeOfWork === 'อื่นๆ (Other)' && a.otherScopeDetail ? `อื่นๆ: ${a.otherScopeDetail}` : a.scopeOfWork;
+                            bVal = b.scopeOfWork === 'อื่นๆ (Other)' && b.otherScopeDetail ? `อื่นๆ: ${b.otherScopeDetail}` : b.scopeOfWork;
+                        } else {
+                            if (Array.isArray(aVal)) aVal = aVal.join(', ');
+                            if (Array.isArray(bVal)) bVal = bVal.join(', ');
+                        }
+
+                        aVal = String(aVal || '');
+                        bVal = String(bVal || '');
+                        return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal, 'th', { numeric: true }) : bVal.localeCompare(aVal, 'th', { numeric: true });
+                    });
+                }
+                return items;
+            }, [data, sortConfig, searchTerm, filters]);
+
+            const requestSort = (key) => {
+                let direction = 'asc';
+                if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+                setSortConfig({ key, direction });
+            };
+
+            const orderedColumns = useMemo(() => {
+                const pinned = columns.filter(c => pinnedColumns.includes(c.key));
+                const unpinned = columns.filter(c => !pinnedColumns.includes(c.key));
+                return [...pinned, ...unpinned];
+            }, [columns, pinnedColumns]);
+
+            const handlePinToggle = (e, key) => {
+                e.stopPropagation();
+                setPinnedColumns(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+                if (!colWidths[key]) {
+                    const th = e.currentTarget.closest('th');
+                    if (th) setColWidths(prev => ({ ...prev, [key]: Math.max(120, th.getBoundingClientRect().width) }));
+                }
+            };
+
+            const getColWidth = (key) => colWidths[key] || 150;
+            const getPinnedLeftPos = (key) => {
+                let left = 0;
+                const targetIdx = orderedColumns.findIndex(c => c.key === key);
+                for (let i = 0; i < targetIdx; i++) {
+                    if (pinnedColumns.includes(orderedColumns[i].key)) left += getColWidth(orderedColumns[i].key);
+                }
+                return left;
+            };
+
+            const handlePointerDown = (e, key) => {
+                e.preventDefault(); e.stopPropagation();
+                const startX = e.pageX || (e.touches ? e.touches[0].pageX : 0);
+                const th = e.currentTarget.closest('th');
+                const startWidth = th ? th.getBoundingClientRect().width : 150;
+
+                const onPointerMove = (me) => {
+                    const currentX = me.pageX || (me.touches ? me.touches[0].pageX : 0);
+                    setColWidths(prev => ({ ...prev, [key]: Math.max(60, startWidth + (currentX - startX)) }));
+                };
+                const onPointerUp = () => {
+                    document.removeEventListener('pointermove', onPointerMove);
+                    document.removeEventListener('pointerup', onPointerUp);
+                    document.removeEventListener('touchmove', onPointerMove);
+                    document.removeEventListener('touchend', onPointerUp);
+                };
+
+                document.addEventListener('pointermove', onPointerMove);
+                document.addEventListener('pointerup', onPointerUp);
+                document.addEventListener('touchmove', onPointerMove, { passive: false });
+                document.addEventListener('touchmove', onPointerMove, { passive: false });
+                document.addEventListener('touchend', onPointerUp);
+            };
+
+            const resetFilters = () => {
+                setSearchTerm('');
+                setFilters({ scopeOfWork: '', equipTeams: '', fiberTeams: '', configTeam: '', pmTeam: '', status: '' });
+                setSortConfig({ key: null, direction: null });
+            };
+
+            return (
+                <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col min-h-0 overflow-hidden relative">
+                    <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-3">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-lg font-bold text-slate-800">{title}</h2>
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-semibold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">{processedData.length} รายการ</span>
+                                {onAddClick && (
+                                    <button onClick={onAddClick} className={`${btnClass} text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-2`}>
+                                        <i className="fa-solid fa-plus"></i> <span className="hidden sm:inline">{addLabel}</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="flex flex-wrap items-center gap-2 bg-white p-2 border border-slate-200 rounded-xl shadow-sm">
+                            <div className="relative flex-1 min-w-[200px]">
+                                <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                                <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="ค้นหาข้อมูลในตาราง..." className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            
+                            {columns.some(c => c.key === 'scopeOfWork') && (
+                                <select value={filters.scopeOfWork} onChange={e=>setFilters({...filters, scopeOfWork: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-slate-50 text-slate-700">
+                                    <option value="">-- Scope --</option>
+                                    {masterData.scopeOfWorks.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            )}
+                            {columns.some(c => c.key === 'equipTeams') && (
+                                <select value={filters.equipTeams} onChange={e=>setFilters({...filters, equipTeams: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-slate-50 text-slate-700">
+                                    <option value="">-- Region Responsible --</option>
+                                    {masterData.equipTeams.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            )}
+                            {columns.some(c => c.key === 'fiberTeams') && (
+                                <select value={filters.fiberTeams} onChange={e=>setFilters({...filters, fiberTeams: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-slate-50 text-slate-700">
+                                    <option value="">-- Fiber Responsible --</option>
+                                    {masterData.fiberTeams.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            )}
+                            {columns.some(c => c.key === 'configTeam') && (
+                                <select value={filters.configTeam} onChange={e=>setFilters({...filters, configTeam: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-slate-50 text-slate-700">
+                                    <option value="">-- Config Responsible --</option>
+                                    {masterData.configTeams.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            )}
+                            {columns.some(c => c.key === 'pmTeam') && (
+                                <select value={filters.pmTeam} onChange={e=>setFilters({...filters, pmTeam: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-slate-50 text-slate-700">
+                                    <option value="">-- PM --</option>
+                                    {masterData.pmTeams.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            )}
+                            {columns.some(c => c.key === 'status') && (
+                                <select value={filters.status} onChange={e=>setFilters({...filters, status: e.target.value})} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-slate-50 text-slate-700">
+                                    <option value="">-- Status --</option>
+                                    {masterData.statuses.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                                </select>
+                            )}
+                            <button onClick={resetFilters} className="text-[10px] bg-red-50 text-red-600 border border-red-200 hover:bg-red-500 hover:text-white px-2 py-1.5 rounded-lg transition-colors"><i className="fa-solid fa-eraser mr-1"></i>ล้าง</button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-auto table-container relative">
+                        <table className="w-full text-left border-collapse text-sm relative" style={{ tableLayout: 'fixed', minWidth: 'max-content' }}>
+                            <thead className="bg-slate-800 shadow-sm sticky top-0 z-40">
+                                <tr>
+                                    {orderedColumns.map((col) => {
+                                        const isPinned = pinnedColumns.includes(col.key);
+                                        const isLastPinned = isPinned && col.key === pinnedColumns[pinnedColumns.length - 1];
+                                        const colWidth = getColWidth(col.key);
+
+                                        let thStyle = { width: colWidth, minWidth: colWidth, maxWidth: colWidth };
+                                        if (isPinned) {
+                                            thStyle.position = 'sticky';
+                                            thStyle.left = getPinnedLeftPos(col.key);
+                                            thStyle.zIndex = 50;
+                                        }
+
+                                        let thClass = `p-0 align-middle relative group transition-colors select-none sortable-header bg-slate-800 border-r border-slate-700 hover:bg-slate-700`;
+                                        if (isLastPinned) thClass += ` shadow-[4px_0_6px_-1px_rgba(0,0,0,0.3)] border-r-slate-500`;
+
+                                        return (
+                                            <th key={col.key} className={thClass} style={thStyle}>
+                                                <div className="flex items-center justify-between px-3 py-3 w-full h-full cursor-pointer" onClick={() => requestSort(col.key)}>
+                                                    <div className="flex items-center gap-2 overflow-hidden w-full">
+                                                        <div className="th-content text-xs font-semibold text-white truncate">{col.label}</div>
+                                                        <button onClick={(e) => handlePinToggle(e, col.key)} className={`shrink-0 hover:scale-125 transition-transform ${isPinned ? 'text-blue-400' : 'text-slate-500 hover:text-white'}`} title="ตรึงคอลัมน์">
+                                                            <i className="fa-solid fa-thumbtack text-[10px]"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div className="ml-1 text-white opacity-70 shrink-0 text-[10px]">
+                                                        {sortConfig.key === col.key ? (sortConfig.direction === 'asc' ? <i className="fa-solid fa-sort-up text-blue-400"></i> : <i className="fa-solid fa-sort-down text-blue-400"></i>) : <i className="fa-solid fa-sort opacity-30"></i>}
+                                                    </div>
+                                                </div>
+                                                <div onPointerDown={(e) => handlePointerDown(e, col.key)} onClick={(e) => e.stopPropagation()} className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize z-10 hover:bg-blue-500 flex flex-col justify-center items-center transition-colors opacity-0 group-hover:opacity-100">
+                                                    <div className="w-[2px] h-4 bg-white/60 rounded-full pointer-events-none"></div>
+                                                </div>
+                                            </th>
+                                        );
+                                    })}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                {processedData.length === 0 ? (
+                                    <tr><td colSpan={columns.length} className="p-8 text-center text-slate-500">ไม่มีข้อมูลที่ตรงกับการค้นหา</td></tr>
+                                ) : (
+                                    processedData.map((row, rIdx) => (
+                                        <tr key={row.id} className="hover:bg-blue-50/50 transition-colors bg-white">
+                                            {orderedColumns.map((col, cIdx) => {
+                                                const isPinned = pinnedColumns.includes(col.key);
+                                                const isLastPinned = isPinned && col.key === pinnedColumns[pinnedColumns.length - 1];
+                                                const colWidth = getColWidth(col.key);
+
+                                                let tdStyle = { width: colWidth, minWidth: colWidth, maxWidth: colWidth, verticalAlign: 'middle' };
+                                                if (isPinned) {
+                                                    tdStyle.position = 'sticky';
+                                                    tdStyle.left = getPinnedLeftPos(col.key);
+                                                    tdStyle.zIndex = 20;
+                                                }
+
+                                                let tdClass = `px-3 py-2 align-middle border-r border-slate-100 truncate`;
+                                                if (isPinned) {
+                                                    tdClass += ` sticky-col-cell bg-white group-hover:bg-blue-50/50`;
+                                                    if (isLastPinned) tdClass += ` shadow-[4px_0_6px_-1px_rgba(0,0,0,0.1)] border-r-slate-300`;
+                                                }
+
+                                                const val = row[col.key];
+                                                let displayVal = val || '-';
+                                                
+                                                if (col.key === 'timeRange') {
+                                                    displayVal = row.startTime && row.endTime ? `${row.startTime} - ${row.endTime}` : '-';
+                                                } else if (col.key === 'scopeOfWork' && val === 'อื่นๆ (Other)' && row.otherScopeDetail) {
+                                                    displayVal = `อื่นๆ: ${row.otherScopeDetail}`;
+                                                } else if (col.key === 'equipTeams') {
+                                                    const main = row.equipTeams || [];
+                                                    const sub = row.equipTeamsSub || [];
+                                                    const parts = [];
+                                                    if (main.length) parts.push(`Main: ${main.join(', ')}`);
+                                                    if (sub.length) parts.push(`Sub: ${sub.join(', ')}`);
+                                                    displayVal = parts.length > 0 ? parts.join(' | ') : '-';
+                                                } else if (col.key === 'fiberTeams') {
+                                                    const main = row.fiberTeams || [];
+                                                    displayVal = main.length > 0 ? main.join(', ') : '-';
+                                                } else if (Array.isArray(val)) {
+                                                    displayVal = val.join(', ');
+                                                }
+
+                                                // --- 1. Inline Select (Dropdown) ---
+                                                const isDropdownCol = ['status', 'configTeam', 'pmTeam', 'scopeOfWork'].includes(col.key);
+                                                if (isDropdownCol) {
+                                                    let options = [];
+                                                    if (col.key === 'status') options = masterData.statuses.map(s => s.name);
+                                                    else if (col.key === 'configTeam') options = masterData.configTeams;
+                                                    else if (col.key === 'pmTeam') options = masterData.pmTeams;
+                                                    else if (col.key === 'scopeOfWork') options = masterData.scopeOfWorks;
+
+                                                    return (
+                                                        <td key={cIdx} className={`${tdClass} text-center relative group`} style={tdStyle} title={displayVal}>
+                                                            <div className="relative w-full h-full flex items-center justify-center cursor-pointer min-h-[24px]">
+                                                                {col.key === 'status' ? (
+                                                                    <span className="px-2 py-1 rounded-md text-[10px] md:text-xs font-bold border block truncate w-full group-hover:opacity-80 transition-opacity" style={{ backgroundColor: getStatusColor(val).bg, color: getStatusColor(val).text, borderColor: getStatusColor(val).border }}>
+                                                                        {displayVal}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="truncate w-full text-xs md:text-sm text-blue-600 font-semibold group-hover:underline flex items-center gap-1 justify-center">
+                                                                        {displayVal} <i className="fa-solid fa-pen text-[8px] opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                                                                    </span>
+                                                                )}
+                                                                <select 
+                                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                                    value={Array.isArray(val) ? val[0] || '' : val || ''}
+                                                                    onChange={(e) => {
+                                                                        if(onUpdateTask) onUpdateTask(row.id, col.key, e.target.value);
+                                                                    }}
+                                                                >
+                                                                    <option value="" disabled>เลือก...</option>
+                                                                    {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                                </select>
+                                                            </div>
+                                                        </td>
+                                                    );
+                                                }
+
+                                                // --- 2. Readonly Cols ---
+                                                const isReadonly = ['dateTime', 'equipTeams', 'fiberTeams'].includes(col.key);
+                                                if (isReadonly) {
+                                                    return (
+                                                        <td key={cIdx} className={tdClass} style={tdStyle} title={displayVal}>
+                                                            <div className={`truncate w-full text-xs md:text-sm text-slate-600 ${col.key === 'dateTime' ? 'cursor-not-allowed' : ''}`}>{displayVal}</div>
+                                                        </td>
+                                                    )
+                                                }
+
+                                                // --- 3. Inline Text Edit (Double Click) ---
+                                                const cellId = `${row.id}-${col.key}`;
+                                                const isEditing = editingCell === cellId;
+
+                                                let inputType = "text";
+                                                let editValue = displayVal === '-' ? '' : displayVal;
+                                                let updateKey = col.key;
+
+                                                if (col.key === 'installDate' || col.key === 'date') {
+                                                    inputType = "date";
+                                                    editValue = row[col.key] || '';
+                                                } else if (col.key === 'timeRange') {
+                                                    inputType = "time";
+                                                    editValue = row.startTime || '';
+                                                    updateKey = 'startTime';
+                                                }
+
+                                                return (
+                                                    <td key={cIdx} className={tdClass} style={tdStyle} title={isEditing ? '' : displayVal}>
+                                                        {isEditing ? (
+                                                            <input 
+                                                                type={inputType}
+                                                                defaultValue={editValue}
+                                                                className="w-full px-2 py-1 text-xs border border-blue-500 rounded outline-none shadow-inner"
+                                                                autoFocus
+                                                                onBlur={(e) => {
+                                                                    if(onUpdateTask && e.target.value !== editValue) {
+                                                                        onUpdateTask(row.id, updateKey, e.target.value);
+                                                                    }
+                                                                    setEditingCell(null);
+                                                                }}
+                                                                onKeyDown={(e) => {
+                                                                    if(e.key === 'Enter') {
+                                                                        if(onUpdateTask && e.target.value !== editValue) {
+                                                                            onUpdateTask(row.id, updateKey, e.target.value);
+                                                                        }
+                                                                        setEditingCell(null);
+                                                                    }
+                                                                }}
+                                                            />
+                                                        ) : (
+                                                            <div 
+                                                                className="truncate w-full text-xs md:text-sm text-slate-700 cursor-text hover:bg-white hover:ring-1 hover:ring-blue-300 p-1 rounded transition-all group"
+                                                                onDoubleClick={() => setEditingCell(cellId)}
+                                                                title={col.key === 'timeRange' ? "ดับเบิ้ลคลิกเพื่อแก้ไขเวลาเริ่ม" : ""}
+                                                            >
+                                                                {displayVal}
+                                                                <i className="fa-solid fa-pen text-[8px] text-blue-400 ml-2 opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                )
+                                            })}
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const sys1Columns = [ 
+            { label: 'Install Date', key: 'installDate' }, 
+            { label: 'Time (Start-End)', key: 'timeRange' },
+            { label: 'Region Responsible', key: 'equipTeams' }, 
+            { label: 'Fiber Responsible', key: 'fiberTeams' }, 
+            { label: 'Config Responsible', key: 'configTeam' }, 
+            { label: 'CIDs', key: 'cid' }, 
+            { label: 'Customer Name', key: 'customerName' }, 
+            { label: 'Scope of Work', key: 'scopeOfWork' }, 
+            { label: 'Remark', key: 'remark'},
+            { label: 'Address', key: 'location' },
+            { label: 'PM Responsible', key: 'pmTeam' }, 
+            { label: 'Status', key: 'status' },
+            { label: 'Last Update', key: 'dateTime' } 
+        ];
+
+        const sys2Columns = [ { label: 'Date', key: 'date' }, { label: 'Survey ID', key: 'surveyId' }, { label: 'Location', key: 'location' }, { label: 'Surveyor', key: 'surveyor' }, { label: 'Status', key: 'status' } ];
+        const sys3Columns = [ { label: 'Order Date', key: 'date' }, { label: 'CID', key: 'cid' }, { label: 'From Port', key: 'fromPort' }, { label: 'To Port', key: 'toPort' }, { label: 'Status', key: 'status' } ];
+
+        const MainDashboardView = ({ tasksSys1, tasksSys2, tasksSys3 }) => {
+            const isStatusDone = (statusStr) => {
+                if(!statusStr) return false;
+                return !!statusStr.match(/(สำเร็จ|เรียบร้อย|complete|done)/i);
+            };
+
+            const calcStats = (tasks) => {
+                const total = tasks.length;
+                const done = tasks.filter(t => isStatusDone(t.status)).length;
+                const pending = total - done;
+                const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+                return { total, done, pending, percent };
+            };
+
+            const s1 = calcStats(tasksSys1);
+            const s2 = calcStats(tasksSys2);
+            const s3 = calcStats(tasksSys3);
+            const overall = {
+                total: s1.total + s2.total + s3.total,
+                done: s1.done + s2.done + s3.done,
+                pending: s1.pending + s2.pending + s3.pending,
+            };
+            overall.percent = overall.total === 0 ? 0 : Math.round((overall.done / overall.total) * 100);
+
+            const SystemCard = ({ title, icon, colorClass, bgClass, stats }) => (
+                <div className={`p-6 rounded-2xl border shadow-sm ${bgClass} flex flex-col`}>
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${colorClass} shadow-sm`}>
+                            <i className={`fa-solid ${icon} text-xl`}></i>
+                        </div>
+                        <h3 className="text-base md:text-lg font-bold text-slate-800">{title}</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mb-4 flex-1">
+                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center justify-center">
+                            <span className="text-[10px] md:text-xs font-semibold text-slate-500 mb-1">งานทั้งหมด</span>
+                            <span className="text-2xl font-bold text-slate-800">{stats.total}</span>
+                        </div>
+                        <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 shadow-sm flex flex-col items-center justify-center">
+                            <span className="text-[10px] md:text-xs font-semibold text-emerald-600 mb-1">สำเร็จแล้ว</span>
+                            <span className="text-2xl font-bold text-emerald-600">{stats.done}</span>
+                        </div>
+                        <div className="bg-orange-50/50 p-3 rounded-xl border border-orange-100 shadow-sm col-span-2 flex flex-col items-center justify-center">
+                            <span className="text-[10px] md:text-xs font-semibold text-orange-600 mb-1">กำลังดำเนินการ / ยังไม่เสร็จ</span>
+                            <span className="text-2xl font-bold text-orange-600">{stats.pending}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div className="flex justify-between text-[10px] md:text-xs font-bold mb-1">
+                            <span className="text-slate-500">ความคืบหน้า</span>
+                            <span className={stats.percent === 100 ? 'text-emerald-600' : 'text-blue-600'}>{stats.percent}%</span>
+                        </div>
+                        <div className="w-full bg-white rounded-full h-2.5 shadow-inner overflow-hidden border border-slate-200">
+                            <div className={`h-2.5 rounded-full ${stats.percent === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${stats.percent}%` }}></div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="space-y-6 max-w-7xl mx-auto w-full">
+                    <header className="flex flex-col md:flex-row justify-between md:items-end gap-4 border-b border-slate-200 pb-4">
+                        <div>
+                            <h2 className="text-2xl md:text-3xl font-bold text-slate-900"><i className="fa-solid fa-house-chimney text-blue-600 mr-2"></i> ภาพรวมทุกระบบงาน (Main Dashboard)</h2>
+                            <p className="text-sm text-slate-500 mt-1">สรุปจำนวนงานและสถานะความคืบหน้าเบื้องต้นของทุกระบบ</p>
+                        </div>
+                    </header>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-slate-800 text-white p-5 md:p-6 rounded-2xl shadow-md border border-slate-700 flex items-center justify-between relative overflow-hidden">
+                            <div className="relative z-10">
+                                <p className="text-xs md:text-sm font-semibold text-slate-300 mb-1">รวมงานทั้งหมดในระบบ</p>
+                                <p className="text-4xl md:text-5xl font-bold">{overall.total}</p>
+                            </div>
+                            <i className="fa-solid fa-cubes text-6xl opacity-10 absolute right-4 top-1/2 -translate-y-1/2"></i>
+                        </div>
+                        <div className="bg-emerald-50 p-5 md:p-6 rounded-2xl shadow-sm border border-emerald-200 flex items-center justify-between relative overflow-hidden">
+                            <div className="relative z-10">
+                                <p className="text-xs md:text-sm font-semibold text-emerald-600 mb-1">สำเร็จแล้วทั้งหมด</p>
+                                <p className="text-4xl md:text-5xl font-bold text-emerald-700">{overall.done}</p>
+                            </div>
+                            <i className="fa-solid fa-circle-check text-6xl opacity-10 text-emerald-800 absolute right-4 top-1/2 -translate-y-1/2"></i>
+                        </div>
+                        <div className="bg-orange-50 p-5 md:p-6 rounded-2xl shadow-sm border border-orange-200 flex items-center justify-between relative overflow-hidden">
+                            <div className="relative z-10">
+                                <p className="text-xs md:text-sm font-semibold text-orange-600 mb-1">กำลังดำเนินการทั้งหมด</p>
+                                <p className="text-4xl md:text-5xl font-bold text-orange-700">{overall.pending}</p>
+                            </div>
+                            <i className="fa-solid fa-clock-rotate-left text-6xl opacity-10 text-orange-800 absolute right-4 top-1/2 -translate-y-1/2"></i>
+                        </div>
+                    </div>
+
+                    <div className="pt-4">
+                        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><i className="fa-solid fa-layer-group text-slate-400 mr-2"></i> แยกตามระบบงาน</h3>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <SystemCard title="Region Assignment" icon="fa-user-gear" colorClass="bg-blue-600" bgClass="bg-blue-50/30 border-blue-100" stats={s1} />
+                            <SystemCard title="ควบคุมงานสำรวจ" icon="fa-map-location-dot" colorClass="bg-amber-500" bgClass="bg-amber-50/30 border-amber-100" stats={s2} />
+                            <SystemCard title="ออเดอร์ Cross Connect" icon="fa-network-wired" colorClass="bg-emerald-600" bgClass="bg-emerald-50/30 border-emerald-100" stats={s3} />
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const DashboardView = ({ systemMode, tasksSys1, masterData }) => {
+            const [filterMonth, setFilterMonth] = useState('All');
+            const [filterTeams, setFilterTeams] = useState([]);
+            const [selectedStatuses, setSelectedStatuses] = useState([]);
+
+            if (systemMode !== 'sys1') {
+                return (
+                    <div className={`bg-${systemMode==='sys2'?'amber':'emerald'}-50 p-10 rounded-2xl text-${systemMode==='sys2'?'amber':'emerald'}-700 font-bold border border-${systemMode==='sys2'?'amber':'emerald'}-200 text-center shadow-sm max-w-3xl mx-auto mt-10`}>
+                        <i className={`fa-solid ${systemMode==='sys2'?'fa-chart-pie':'fa-chart-column'} text-6xl mb-4 block opacity-80`}></i>
+                        <h3 className="text-2xl">ภาพรวม {systemMode==='sys2' ? 'ระบบงานสำรวจ' : 'ออเดอร์ Cross Connect'}</h3>
+                        <p className="font-normal mt-2 opacity-80">ส่วนนี้ยังไม่มีกราฟแสดงผล เนื่องจากโครงสร้างข้อมูลยังไม่สมบูรณ์</p>
+                    </div>
+                );
+            }
+
+            const getStatusColorConfig = (statusName) => {
+                const found = masterData.statuses.find(s => s.name === statusName);
+                if (found) return { bg: hexToRgbA(found.bg, 0.8), border: found.bg, text: found.bg, soft: hexToRgbA(found.bg, 0.15) };
+                return { bg: 'rgba(203, 213, 225, 0.8)', border: '#64748b', text: '#64748b', soft: '#f1f5f9' };
+            };
+
+            const uniqueMonths = [...new Set(tasksSys1.map(t => {
+                const d = t.installDate ? new Date(t.installDate) : parseThaiDateTime(t.dateTime);
+                return d ? d.getMonth() + 1 : null;
+            }).filter(Boolean))].sort((a,b)=>a-b);
+
+            const uniqueTeams = masterData.equipTeams;
+
+            let filteredTasks = tasksSys1.filter(t => {
+                let mMatch = true, tMatch = true;
+                const d = t.installDate ? new Date(t.installDate) : parseThaiDateTime(t.dateTime);
+                if (filterMonth !== 'All' && d && (d.getMonth() + 1) !== parseInt(filterMonth)) mMatch = false;
+                if (filterTeams.length > 0) {
+                    const taskTeams = Array.isArray(t.equipTeams) ? t.equipTeams : [];
+                    if (!taskTeams.some(team => filterTeams.includes(team))) tMatch = false;
+                }
+                return mMatch && tMatch;
+            });
+
+            const chartFilteredTasks = filteredTasks.filter(t => selectedStatuses.length === 0 || selectedStatuses.includes(t.status));
+            const totalTasksCount = filteredTasks.length;
+
+            const statusCounts = {}; masterData.statuses.forEach(s => statusCounts[s.name] = 0);
+            filteredTasks.forEach(t => { if(statusCounts[t.status] !== undefined) statusCounts[t.status]++; else statusCounts[t.status] = 1; });
+            const sortedStatuses = Object.keys(statusCounts);
+
+            const doughnutCounts = {}; chartFilteredTasks.forEach(t => { doughnutCounts[t.status] = (doughnutCounts[t.status] || 0) + 1; });
+            const doughnutLabels = Object.keys(doughnutCounts);
+            const statusChartData = { labels: doughnutLabels, datasets: [{ data: doughnutLabels.map(s => doughnutCounts[s]), backgroundColor: doughnutLabels.map(s => getStatusColorConfig(s).bg), borderColor: doughnutLabels.map(s => getStatusColorConfig(s).border), borderWidth: 2, hoverOffset: 6, borderRadius: 4 }] };
+            const statusChartOptions = { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false }, datalabels: { display: false } } };
+
+            const monthlyData = {}; for (let i = 1; i <= 12; i++) monthlyData[i] = { done: 0, ongoing: 0 };
+            chartFilteredTasks.forEach(t => {
+                const d = t.installDate ? new Date(t.installDate) : parseThaiDateTime(t.dateTime);
+                if (d) { let m = d.getMonth() + 1; if (m >= 1 && m <= 12) { if (t.status.includes('สำเร็จ')) monthlyData[m].done++; else monthlyData[m].ongoing++; } }
+            });
+            const dlStyle = { color: '#ffffff', font: { weight: 'bold', size: 12, family: 'Prompt' }, display: (c) => c.dataset.data[c.dataIndex] > 0, textStrokeColor: 'rgba(15, 23, 42, 0.85)', textStrokeWidth: 4 };
+            const barChartData = { labels: ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."], datasets: [ { label: 'สำเร็จ (Done)', data: Object.values(monthlyData).map(d => d.done), backgroundColor: 'rgba(16, 185, 129, 0.8)', borderRadius: 4 }, { label: 'กำลังดำเนินการ (Ongoing)', data: Object.values(monthlyData).map(d => d.ongoing), backgroundColor: 'rgba(59, 130, 246, 0.8)', borderRadius: 4 } ] };
+            const barChartOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' }, datalabels: dlStyle }, scales: { y: { beginAtZero: true } } };
+
+            const activeTeams = [...new Set(chartFilteredTasks.flatMap(t => t.equipTeams || []))];
+            const activeStatusesForTeam = [...new Set(chartFilteredTasks.map(t => t.status))];
+            const teamChartData = { labels: activeTeams, datasets: activeStatusesForTeam.map(status => ({ label: status, data: activeTeams.map(team => chartFilteredTasks.filter(t => (t.equipTeams || []).includes(team) && t.status === status).length), backgroundColor: getStatusColorConfig(status).bg, borderColor: getStatusColorConfig(status).border, borderWidth: 1 })) };
+            const teamChartOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, datalabels: dlStyle }, scales: { x: { stacked: false }, y: { beginAtZero: true } } };
+
+            return (
+                <div className="space-y-6 max-w-7xl mx-auto">
+                    <header className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                        <div>
+                            <h2 className="text-xl md:text-3xl font-bold text-slate-900">ภาพรวมโครงการ (Region Assignment)</h2>
+                            <p className="text-xs md:text-sm text-slate-500 mt-1">สรุปข้อมูลจากระบบ Region Assignment (อิงจากวันที่ติดตั้ง)</p>
+                        </div>
+                        <div className="flex flex-wrap gap-3 bg-white p-3 rounded-xl shadow-sm border border-slate-200 items-center">
+                            <div className="flex items-center gap-2"><label className="text-xs font-semibold text-slate-600">เดือนติดตั้ง:</label><select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white outline-none"><option value="All">ทั้งหมด</option>{uniqueMonths.map(m => <option key={m} value={m}>{monthNames[m-1]}</option>)}</select></div>
+                            <div className="flex items-center gap-2"><label className="text-xs font-semibold text-slate-600">ทีมอุปกรณ์:</label><MultiSelect options={uniqueTeams} selected={filterTeams} onChange={setFilterTeams} placeholder="ทีมงาน" /></div>
+                        </div>
+                    </header>
+
+                    <div className="flex flex-nowrap overflow-x-auto gap-3 md:gap-4 pb-2 px-1 custom-scrollbar">
+                        <div className="bg-slate-800 text-white p-3 md:p-4 rounded-xl shadow-md border border-slate-700 flex-shrink-0 min-w-[140px] flex flex-col items-center justify-center gap-2"><p className="text-xs font-semibold text-slate-300">จำนวนงานทั้งหมด</p><p className="text-3xl md:text-5xl font-bold">{totalTasksCount}</p></div>
+                        {sortedStatuses.map(status => {
+                            const isSelected = selectedStatuses.length === 0 || selectedStatuses.includes(status);
+                            const conf = getStatusColorConfig(status);
+                            return (
+                                <div key={status} onClick={() => setSelectedStatuses(selectedStatuses.includes(status) ? selectedStatuses.filter(s => s !== status) : [...selectedStatuses, status])} className={`p-3 md:p-4 rounded-xl shadow-md border-b-4 cursor-pointer transition-all duration-200 select-none flex-shrink-0 min-w-[140px] flex flex-col justify-between ${isSelected ? 'scale-100 ring-2 ring-offset-2' : 'scale-95 opacity-70 hover:opacity-100'}`} style={{ backgroundColor: isSelected ? conf.soft : '#ffffff', borderColor: conf.border, '--tw-ring-color': conf.border }}>
+                                    <div className="flex justify-between items-start"><p className="text-xs font-bold truncate pr-2" style={{ color: conf.text }}>{status}</p>{isSelected && selectedStatuses.length > 0 && <i className="fa-solid fa-circle-check text-xs" style={{ color: conf.text }}></i>}</div>
+                                    <p className="text-2xl md:text-4xl font-bold mt-2" style={{ color: conf.text }}>{statusCounts[status]}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-1 flex flex-col relative"><div className="flex justify-between items-center mb-4"><h3 className="text-base font-bold flex items-center gap-2"><i className="fa-solid fa-chart-pie text-blue-600"></i> สัดส่วนสถานะงาน</h3></div><div className="relative flex-1 w-full flex flex-col items-center justify-center min-h-[250px]">{chartFilteredTasks.length > 0 ? (<><div className="relative mx-auto w-48 h-48"><div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-4xl font-extrabold text-slate-800">{chartFilteredTasks.length}</span><span className="text-xs font-bold text-slate-500 mt-1">CIDs</span></div><ChartComponent type="doughnut" data={statusChartData} options={statusChartOptions} /></div></>) : <p className="text-slate-400">ไม่มีข้อมูล</p>}</div></div>
+                        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-2"><h3 className="text-base font-bold mb-4 flex items-center gap-2"><i className="fa-solid fa-chart-column text-blue-600"></i> สรุปแผนปฏิบัติงานรายเดือน</h3><div className="relative h-60 w-full"><ChartComponent type="bar" data={barChartData} options={barChartOptions} /></div></div>
+                        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-3"><h3 className="text-base font-bold mb-4 flex items-center gap-2"><i className="fa-solid fa-users text-blue-600"></i> ปริมาณงานแยกตามทีม</h3><div className="relative h-64 w-full overflow-x-auto custom-scrollbar"><div className="min-w-[600px] h-full">{chartFilteredTasks.length > 0 ? <ChartComponent type="bar" data={teamChartData} options={teamChartOptions} /> : <p className="text-center mt-20">ไม่มีข้อมูล</p>}</div></div></div>
+                    </div>
+                </div>
+            );
+        };
+
+        const CalendarView = ({ systemMode, tasksSys1, tasksSys2, tasksSys3, masterData }) => {
+            const [calendarView, setCalendarView] = useState('month');
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [tooltipData, setTooltipData] = useState({ visible: false, task: null, x: 0, y: 0 });
+            const [visibleSystems, setVisibleSystems] = useState(['sys1', 'sys2', 'sys3']);
+
+            const toggleSystem = (sys) => {
+                if (visibleSystems.includes(sys)) setVisibleSystems(visibleSystems.filter(s => s !== sys));
+                else setVisibleSystems([...visibleSystems, sys]);
+            };
+
+            const navigateCalendar = (dir) => { const nd = new Date(currentDate); if (calendarView === 'month') nd.setMonth(nd.getMonth() + dir); else if (calendarView === 'week') nd.setDate(nd.getDate() + (dir * 7)); else nd.setDate(nd.getDate() + dir); setCurrentDate(nd); };
+            const monthSlots = [...Array(getFirstDayOfMonth(currentDate.getFullYear(), currentDate.getMonth())).fill(null), ...Array.from({length: getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth())}, (_, i) => new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1))];
+            const weekSlots = Array.from({length: 7}, (_, i) => { const d = new Date(currentDate); d.setDate(d.getDate() - d.getDay() + i); return d; });
+
+            const getTasksForDateObj = (dateObj) => {
+                if (!dateObj) return [];
+                let allTasks = [];
+                
+                if (systemMode === 'sys1' || (systemMode === 'all' && visibleSystems.includes('sys1'))) {
+                    const mappedSys1 = tasksSys1.filter(t => { const tDate = t.installDate ? new Date(t.installDate) : parseThaiDateTime(t.dateTime); return tDate && tDate.getDate() === dateObj.getDate() && tDate.getMonth() === dateObj.getMonth() && tDate.getFullYear() === dateObj.getFullYear(); }).map(t => ({...t, _sys: 'sys1', _title: t.customerName || 'No Name', _sub: Array.isArray(t.equipTeams) ? t.equipTeams.join(', ') : '-', _cid: t.cid, _time: t.startTime && t.endTime ? `${t.startTime} - ${t.endTime}` : (t.installDate || t.dateTime.split(' ')[0]) }));
+                    allTasks = [...allTasks, ...mappedSys1];
+                }
+                if (systemMode === 'sys2' || (systemMode === 'all' && visibleSystems.includes('sys2'))) {
+                    const mappedSys2 = tasksSys2.filter(t => { const tDate = parseThaiDateTime(t.date); return tDate && tDate.getDate() === dateObj.getDate() && tDate.getMonth() === dateObj.getMonth() && tDate.getFullYear() === dateObj.getFullYear(); }).map(t => ({...t, _sys: 'sys2', _title: t.location || 'No Location', _sub: t.surveyor || '-', _cid: t.surveyId, _time: t.date }));
+                    allTasks = [...allTasks, ...mappedSys2];
+                }
+                if (systemMode === 'sys3' || (systemMode === 'all' && visibleSystems.includes('sys3'))) {
+                    const mappedSys3 = tasksSys3.filter(t => { const tDate = parseThaiDateTime(t.date); return tDate && tDate.getDate() === dateObj.getDate() && tDate.getMonth() === dateObj.getMonth() && tDate.getFullYear() === dateObj.getFullYear(); }).map(t => ({...t, _sys: 'sys3', _title: `CID: ${t.cid || '-'}`, _sub: `${t.fromPort || '-'} -> ${t.toPort || '-'}`, _cid: t.cid, _time: t.date }));
+                    allTasks = [...allTasks, ...mappedSys3];
+                }
+                return allTasks;
+            };
+
+            const getStatusColorConfig = (statusName) => {
+                const found = masterData.statuses.find(s => s.name === statusName);
+                if (found) return { bg: hexToRgbA(found.bg, 0.15), border: found.bg, text: found.text, solidBg: found.bg };
+                return { bg: '#f1f5f9', border: '#cbd5e1', text: '#475569', solidBg: '#94a3b8' };
+            };
+
+            const getTeamColorStyle = (teamName) => {
+                if (!teamName || String(teamName).trim() === '') return { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0' };
+                const fallbackTeamColors = [ { bg: '#f3e8ff', text: '#7e22ce', border: '#e9d5ff' }, { bg: '#ccfbf1', text: '#0f766e', border: '#99f6e4' }, { bg: '#ffedd5', text: '#c2410c', border: '#fed7aa' }, { bg: '#e0e7ff', text: '#4338ca', border: '#c7d2fe' }, { bg: '#dcfce7', text: '#15803d', border: '#bbf7d0' }, { bg: '#ffe4e6', text: '#be123c', border: '#fecdd3' } ];
+                let str = String(teamName).trim(); let hash = 0; for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+                return fallbackTeamColors[Math.abs(hash) % fallbackTeamColors.length];
+            };
+
+            const handleMouseMove = (e, task) => {
+                const tooltipWidth = 260, tooltipHeight = 150; let x = e.clientX + 15, y = e.clientY + 15;
+                if (x + tooltipWidth > window.innerWidth) x = e.clientX - tooltipWidth - 15;
+                if (y + tooltipHeight > window.innerHeight) y = e.clientY - tooltipHeight - 15;
+                setTooltipData({ visible: true, task, x: Math.max(10, x), y: Math.max(10, y) });
+            };
+            const handleMouseLeave = () => setTooltipData({ visible: false, task: null, x: 0, y: 0 });
+
+            const calendarTitle = systemMode === 'sys1' ? 'ปฏิทินงาน Region Assignment' : systemMode === 'sys2' ? 'ปฏิทินงานสำรวจ' : systemMode === 'sys3' ? 'ปฏิทิน Cross Connect' : 'ปฏิทินรวมทุกระบบงาน';
+
+            return (
+                <div className="flex flex-col h-full overflow-hidden">
+                    <header className="flex flex-col gap-4 mb-4 shrink-0">
+                        <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                            <div>
+                                <h2 className="text-xl md:text-3xl font-bold text-slate-900">{calendarTitle}</h2>
+                                <p className="text-xs text-slate-500 mt-1">แสดงแผนงานจากระบบตามช่วงเวลาที่กำหนด</p>
+                                
+                                {systemMode === 'all' && (
+                                    <div className="flex flex-wrap items-center gap-2 mt-3">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">แสดงระบบ:</span>
+                                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 shadow-sm transition-colors hover:bg-blue-100 select-none">
+                                            <input type="checkbox" checked={visibleSystems.includes('sys1')} onChange={() => toggleSystem('sys1')} className="w-3.5 h-3.5 cursor-pointer accent-blue-600" />
+                                            1. Region Assignment
+                                        </label>
+                                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-100 shadow-sm transition-colors hover:bg-amber-100 select-none">
+                                            <input type="checkbox" checked={visibleSystems.includes('sys2')} onChange={() => toggleSystem('sys2')} className="w-3.5 h-3.5 cursor-pointer accent-amber-500" />
+                                            2. ควบคุมงานสำรวจ
+                                        </label>
+                                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 shadow-sm transition-colors hover:bg-emerald-100 select-none">
+                                            <input type="checkbox" checked={visibleSystems.includes('sys3')} onChange={() => toggleSystem('sys3')} className="w-3.5 h-3.5 cursor-pointer accent-emerald-600" />
+                                            3. ออเดอร์ Cross Connect
+                                        </label>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex flex-col items-end gap-3 w-full md:w-auto mt-2 md:mt-0">
+                                <div className="flex bg-slate-200 p-1 rounded-lg w-full sm:w-auto">
+                                    <button onClick={() => setCalendarView('day')} className={`flex-1 px-3 py-1.5 text-xs font-semibold rounded-md ${calendarView === 'day' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600'}`}>รายวัน</button>
+                                    <button onClick={() => setCalendarView('week')} className={`flex-1 px-3 py-1.5 text-xs font-semibold rounded-md ${calendarView === 'week' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600'}`}>สัปดาห์</button>
+                                    <button onClick={() => setCalendarView('month')} className={`flex-1 px-3 py-1.5 text-xs font-semibold rounded-md ${calendarView === 'month' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600'}`}>เดือน</button>
+                                </div>
+                                <div className="flex items-center justify-between w-full md:w-auto gap-4">
+                                    <h3 className="text-base md:text-xl font-bold text-blue-700 min-w-[150px] text-right">
+                                        {calendarView === 'month' && `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`}
+                                        {calendarView === 'week' && `สัปดาห์ที่ ${currentDate.getDate()} ${monthNames[currentDate.getMonth()]}`}
+                                        {calendarView === 'day' && `${currentDate.getDate()} ${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`}
+                                    </h3>
+                                    <div className="flex gap-1 shrink-0">
+                                        <button onClick={() => navigateCalendar(-1)} className="p-1.5 bg-white border rounded-lg hover:bg-slate-50"><i className="fa-solid fa-chevron-left"></i></button>
+                                        <button onClick={() => setCurrentDate(new Date())} className="px-2 bg-white border rounded-lg hover:bg-slate-50 text-xs font-bold text-slate-700">วันนี้</button>
+                                        <button onClick={() => navigateCalendar(1)} className="p-1.5 bg-white border rounded-lg hover:bg-slate-50"><i className="fa-solid fa-chevron-right"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative">
+                        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 shrink-0">
+                            {['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'].map((d, i) => (<div key={d} className="py-2 text-center text-xs font-semibold text-slate-600 border-r border-slate-200"><span className="md:hidden">{['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'][i]}</span><span className="hidden md:inline">{d}</span></div>))}
+                        </div>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-100/50">
+                            {calendarView === 'month' && (
+                                <div className="grid grid-cols-7 h-full min-h-[500px] auto-rows-fr">
+                                    {monthSlots.map((dateObj, idx) => {
+                                        const dayTasks = getTasksForDateObj(dateObj);
+                                        return (
+                                            <div key={idx} className="bg-white p-1 md:p-2 border-r border-b border-slate-200 flex flex-col hover:bg-blue-50/30 overflow-hidden min-h-[100px]">
+                                                {dateObj && (
+                                                    <>
+                                                        <div className="text-right mb-1"><span className={`inline-block w-6 h-6 leading-6 text-center rounded-full text-xs font-semibold ${dateObj.getDate() === new Date().getDate() && dateObj.getMonth() === new Date().getMonth() ? 'bg-blue-600 text-white shadow-md' : 'text-slate-700 hover:bg-blue-100 hover:text-blue-700 cursor-pointer transition-all'}`} onClick={() => { setCalendarView('day'); setCurrentDate(dateObj); }}>{dateObj.getDate()}</span></div>
+                                                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-1">
+                                                            {dayTasks.map(t => {
+                                                                const conf = getStatusColorConfig(t.status);
+                                                                return (
+                                                                    <div key={t.id} className="p-1.5 md:p-2 rounded-lg md:rounded-xl border border-l-2 md:border-l-4 shadow-sm bg-white text-[9px] md:text-xs space-y-1 cursor-pointer hover:shadow-md transition-shadow" style={{borderLeftColor: conf.border}} onMouseMove={(e)=>handleMouseMove(e, t)} onMouseLeave={handleMouseLeave} onClick={() => { if(window.innerWidth <= 1024) { setCalendarView('day'); setCurrentDate(dateObj); } }}>
+                                                                        <div className="flex justify-between items-center mb-0.5"><div className="text-slate-500 font-semibold truncate text-[8px] md:text-[10px]">{t._sub}</div>{systemMode === 'all' && <span className="text-[7px] bg-slate-100 text-slate-400 px-1 rounded uppercase">{t._sys}</span>}</div>
+                                                                        <div className="font-bold text-slate-800 leading-tight line-clamp-2" title={t._title}>{t._title}</div>
+                                                                        <div className="flex items-center gap-1 text-slate-600 font-medium text-[8px] md:text-[10px] mt-0.5 flex-wrap"><i className="fa-regular fa-calendar-check text-blue-600"></i> {t._time} </div>
+                                                                        <div className="mt-1 text-center font-bold px-1 py-0.5 rounded border text-[8px] md:text-[10px] truncate" style={{backgroundColor: conf.bg, color: conf.border, borderColor: conf.border}}>{t.status || 'No Status'}</div>
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                            
+                            {calendarView === 'week' && (
+                                <div className="grid grid-cols-7 border-l border-slate-200 h-full min-h-[400px]">
+                                    {weekSlots.map((dateObj, idx) => {
+                                        const dayTasks = getTasksForDateObj(dateObj);
+                                        return (
+                                            <div key={`w-${idx}`} className="bg-white p-1 md:p-2 flex flex-col gap-1.5 md:gap-2 bg-slate-50/30 border-r border-b border-slate-200 h-full overflow-hidden min-h-0">
+                                                <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-1.5 min-h-0">
+                                                    {dayTasks.map(t => {
+                                                        const conf = getStatusColorConfig(t.status);
+                                                        return (
+                                                            <div key={t.id} style={{borderLeftColor: conf.border}} className="p-1.5 md:p-3 rounded-lg md:rounded-xl border border-l-2 md:border-l-4 shadow-sm bg-white text-[10px] md:text-xs space-y-1 md:space-y-1.5 cursor-pointer hover:shadow-md transition-shadow" onMouseMove={(e) => handleMouseMove(e, t)} onMouseLeave={handleMouseLeave} onClick={() => { if(window.innerWidth <= 1024) { setCalendarView('day'); setCurrentDate(dateObj); } }}>
+                                                                <div className="flex justify-between items-center mb-0.5"><div className="text-slate-500 font-semibold truncate">{t._sub}</div>{systemMode === 'all' && <span className="text-[8px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded uppercase">{t._sys}</span>}</div>
+                                                                <div className="font-bold text-slate-800 break-words leading-tight line-clamp-2">{t._title}</div>
+                                                                <div className="flex items-center gap-1 text-slate-600 font-medium px-1 py-0.5 rounded text-[8px] md:text-[10px] w-fit mt-1"><i className="fa-regular fa-calendar-check text-blue-600"></i> {t._time}</div>
+                                                                <div className="mt-1.5 text-center font-bold px-1 md:px-2 py-0.5 md:py-1 rounded-md md:rounded-lg border text-[8px] md:text-[10px]" style={{backgroundColor: conf.bg, color: conf.border, borderColor: conf.border}}>{t.status || 'No Status'}</div>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {calendarView === 'day' && (() => {
+                                const dayTasks = getTasksForDateObj(currentDate);
+                                return (
+                                    <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col p-4 md:p-6 min-h-0 overflow-hidden h-full">
+                                        <h4 className="text-base md:text-lg font-bold text-slate-800 mb-4 md:mb-6 border-b pb-3 md:pb-4 flex justify-between items-center shrink-0"><span><i className="fa-regular fa-calendar-check text-blue-600 mr-2"></i> ตารางงานประจำวัน</span><span className="text-xs md:text-sm font-medium bg-blue-100 text-blue-700 px-3 md:px-4 py-1 md:py-1.5 rounded-full shadow-sm">{dayTasks.length} งาน</span></h4>
+                                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4">
+                                            {dayTasks.length === 0 ? (
+                                                <div className="text-center text-slate-400 py-12 md:py-20 flex flex-col items-center"><i className="fa-regular fa-calendar-xmark text-4xl md:text-6xl mb-3 md:mb-4 text-slate-200"></i><p className="text-sm md:text-lg font-medium">ไม่มีแผนงานในวันนี้</p></div>
+                                            ) : (
+                                                <div className="space-y-3 md:space-y-4">
+                                                    {dayTasks.map(t => {
+                                                        const conf = getStatusColorConfig(t.status);
+                                                        const teamColor = getTeamColorStyle(t._sub.split(',')[0]);
+                                                        return (
+                                                            <div key={t.id} className="flex bg-white rounded-xl md:rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer relative" onMouseMove={(e) => handleMouseMove(e, t)} onMouseLeave={handleMouseLeave}>
+                                                                <div style={{backgroundColor: conf.solidBg}} className="w-2 md:w-3 shrink-0"></div>
+                                                                <div className="p-3 md:p-4 flex-1 flex flex-col text-xs md:text-sm min-w-0">
+                                                                    <div className="flex flex-col lg:flex-row gap-3 md:gap-4 lg:items-center w-full min-w-0">
+                                                                        <div className="flex-1 flex flex-col lg:flex-row gap-3 lg:gap-4 lg:items-center min-w-0">
+                                                                            <div className="flex flex-col justify-center items-start shrink-0 lg:pr-4 lg:border-r border-slate-200"><p className="text-[10px] md:text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">รายละเอียดทีม / งาน</p><div className="px-2 py-1 md:py-1.5 rounded-md text-sm md:text-base font-bold border w-32 md:w-40 text-center truncate shadow-sm" style={{ backgroundColor: teamColor.bg, color: teamColor.text, borderColor: teamColor.border }} title={t._sub}>{t._sub}</div></div>
+                                                                            <div className="flex-1 flex flex-col justify-center overflow-hidden min-w-0 lg:pr-2"><p className="text-[10px] md:text-xs text-slate-400 font-semibold uppercase tracking-wider">ชื่อรายการ / ลูกค้า</p><p className="font-bold text-slate-800 text-sm md:text-base leading-tight truncate mt-0.5" title={t._title}>{t._cid && <span className="text-blue-600 mr-1">[{t._cid}]</span>}<span>{t._title}</span></p></div>
+                                                                            <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 shrink-0 lg:pl-2">
+                                                                                <div className="flex flex-col justify-center shrink-0"><p className="text-[10px] md:text-xs text-slate-400 font-semibold uppercase tracking-wider">วันเวลา (Date/Time)</p><div className="flex items-center gap-2 mt-0.5 text-sm md:text-base font-bold text-slate-700"><p><i className="fa-regular fa-calendar-check text-blue-600 mr-1"></i> {t._time}</p></div></div>
+                                                                                {systemMode === 'all' && <div className="flex flex-col justify-center shrink-0"><p className="text-[10px] md:text-xs text-slate-400 font-semibold uppercase tracking-wider">ระบบ</p><p className="mt-0.5 text-sm md:text-base font-bold text-slate-500 uppercase">{t._sys}</p></div>}
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex justify-start lg:justify-end mt-2 lg:mt-0 shrink-0 border-t lg:border-t-0 lg:border-l border-slate-200 pt-3 lg:pt-0 lg:pl-4"><span style={{backgroundColor: conf.bg, color: conf.border, borderColor: conf.border}} className="font-bold px-4 md:px-6 py-1.5 md:py-2 rounded-lg md:rounded-xl border-2 text-center min-w-[120px] md:min-w-[140px] shadow-sm">{t.status || 'No Status'}</span></div>
+                                                                    </div>
+                                                                    {t.remark && <div className="mt-3 pt-3 border-t border-slate-100 w-full"><p className="text-[10px] md:text-xs text-amber-600 font-semibold uppercase tracking-wider">หมายเหตุเพิ่มเติม</p><p className="text-slate-600 text-xs mt-0.5 break-words">{t.remark}</p></div>}
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+
+                        {tooltipData.visible && tooltipData.task && (
+                            <div className="fixed z-[9999] bg-white p-4 rounded-xl shadow-2xl border border-blue-200 w-[260px] pointer-events-none" style={{ left: tooltipData.x, top: tooltipData.y }}>
+                                <div className="flex justify-between items-start mb-2 border-b pb-2"><h4 className="font-bold text-slate-800 text-sm truncate pr-2">{tooltipData.task._title}</h4><span className="text-[8px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase shrink-0">{tooltipData.task._sys}</span></div>
+                                <div className="text-xs space-y-1.5 text-slate-600">
+                                    <p><span className="font-semibold text-slate-400">ID / CID:</span> <span className="text-blue-600 font-bold">{tooltipData.task._cid || '-'}</span></p>
+                                    <p><span className="font-semibold text-slate-400">ผู้รับผิดชอบ:</span> {tooltipData.task._sub}</p>
+                                    <p><span className="font-semibold text-slate-400">วันที่:</span> {tooltipData.task._time}</p>
+                                    <p><span className="font-semibold text-slate-400">สถานะ:</span> <span className="font-bold" style={{color: getStatusColorConfig(tooltipData.task.status).text}}>{tooltipData.task.status || 'ไม่มี'}</span></p>
+                                    {tooltipData.task.scopeOfWork && <p><span className="font-semibold text-slate-400">Scope:</span> {tooltipData.task.scopeOfWork === 'อื่นๆ (Other)' && tooltipData.task.otherScopeDetail ? `อื่นๆ: ${tooltipData.task.otherScopeDetail}` : tooltipData.task.scopeOfWork}</p>}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('main_dashboard');
+            const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
+            const [openModalForm, setOpenModalForm] = useState(null); 
+            
+            const [masterData, setMasterData] = useState(defaultMasterData);
+            const [tasksSys1, setTasksSys1] = useState([]);
+            const [tasksSys2, setTasksSys2] = useState([]);
+            const [tasksSys3, setTasksSys3] = useState([]);
+            
+            // Firebase Auth State
+            const [user, setUser] = useState(null);
+            const [isDbReady, setIsDbReady] = useState(false);
+
+            // 1. Initialize Firebase & Auth
+            useEffect(() => {
+                const initFirebase = async () => {
+                    try {
+                        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+                        if (!firebaseConfig) { console.warn("No Firebase Config found in environment"); return; }
+                        
+                        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                        
+                        if (!window.FirebaseLib) throw new Error("Firebase Library not loaded yet.");
+                        const { initializeApp, getAuth, getFirestore, onAuthStateChanged, signInWithCustomToken, signInAnonymously } = window.FirebaseLib;
+                        
+                        app = initializeApp(firebaseConfig);
+                        auth = getAuth(app);
+                        db = getFirestore(app);
+
+                        // Rule 3: Auth First
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+
+                        onAuthStateChanged(auth, (currentUser) => {
+                            setUser(currentUser);
+                            if(currentUser) setIsDbReady(true);
+                        });
+
+                    } catch (error) {
+                        console.error("Firebase Init Error:", error);
+                    }
+                };
+                initFirebase();
+            }, []);
+
+            // 2. Fetch Data via onSnapshot (Real-time Cloud Sync)
+            useEffect(() => {
+                if (!isDbReady || !user) return; // Rule 3: Guard with user
+                const { collection, onSnapshot, doc } = window.FirebaseLib;
+
+                // Sync Master Data
+                const unsubMaster = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'masterData'), 
+                    (docSnap) => {
+                        if (docSnap.exists()) {
+                            let parsed = docSnap.data();
+                            if (parsed.statuses && parsed.statuses[0] && (parsed.statuses[0].bg === '#fef3c7' || parsed.statuses[0].bg === '#e2e8f0')) parsed.statuses = defaultMasterData.statuses;
+                            if (!parsed.scopeOfWorks) parsed.scopeOfWorks = defaultMasterData.scopeOfWorks;
+                            if (!parsed.scopeOfWorks.includes("กำหนดเวลาเอง (Custom)")) parsed.scopeOfWorks.push("กำหนดเวลาเอง (Custom)");
+                            if (!parsed.scopeOfWorks.includes("อื่นๆ (Other)")) parsed.scopeOfWorks.push("อื่นๆ (Other)");
+                            setMasterData(parsed);
+                        } else {
+                            // If first time, set default
+                            const { setDoc } = window.FirebaseLib;
+                            setDoc(docSnap.ref, defaultMasterData).catch(e=>console.error(e));
+                        }
+                    }, 
+                    (error) => console.error("Error fetching master data:", error)
+                );
+
+                // Helper to sync tasks collections
+                const syncCollection = (colName, setStateFunc) => {
+                    return onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', colName), 
+                        (snap) => {
+                            const items = [];
+                            snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+                            // Sort locally desc by createdAt if needed, or by id
+                            items.sort((a,b) => b.id.localeCompare(a.id));
+                            setStateFunc(items);
+                        },
+                        (error) => console.error(`Error fetching ${colName}:`, error)
+                    );
+                };
+
+                const unsubSys1 = syncCollection('tasksSys1', setTasksSys1);
+                const unsubSys2 = syncCollection('tasksSys2', setTasksSys2);
+                const unsubSys3 = syncCollection('tasksSys3', setTasksSys3);
+
+                return () => {
+                    unsubMaster(); unsubSys1(); unsubSys2(); unsubSys3();
+                };
+            }, [isDbReady, user]);
+
+            const handleUpdateTaskInCloud = async (colName, taskId, key, val) => {
+                if (!isDbReady) return;
+                const { doc, setDoc } = window.FirebaseLib;
+                
+                let updatedData = { [key]: val };
+                updatedData.dateTime = new Date().toLocaleString('th-TH', { hour12: false });
+                
+                // Specific logic for Sys1 Time calculation
+                if (colName === 'tasksSys1' && (key === 'scopeOfWork' || key === 'startTime')) {
+                     const currentTask = tasksSys1.find(t => t.id === taskId);
+                     if (currentTask) {
+                         const tempTask = { ...currentTask, [key]: val };
+                         const isCustom = (tempTask.scopeOfWork || '').includes('กำหนดเวลาเอง') || (tempTask.scopeOfWork || '').includes('Custom') || (tempTask.scopeOfWork || '') === 'อื่นๆ (Other)';
+                         if (!isCustom && tempTask.startTime) {
+                             const duration = getScopeDuration(tempTask.scopeOfWork);
+                             const [h, m] = tempTask.startTime.split(':').map(Number);
+                             const date = new Date();
+                             date.setHours(h, m + duration);
+                             updatedData.endTime = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                         }
+                     }
+                }
+
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', colName, taskId), updatedData, { merge: true });
+                } catch (e) {
+                    console.error("Update error:", e);
+                    window.customAlert("❌ เกิดข้อผิดพลาดในการอัปเดตข้อมูลบน Cloud");
+                }
+            };
+
+            const handleUpdateSys1 = (taskId, key, val) => handleUpdateTaskInCloud('tasksSys1', taskId, key, val);
+            const handleUpdateSys2 = (taskId, key, val) => handleUpdateTaskInCloud('tasksSys2', taskId, key, val);
+            const handleUpdateSys3 = (taskId, key, val) => handleUpdateTaskInCloud('tasksSys3', taskId, key, val);
+
+            const [modalState, setModalState] = useState({ isOpen: false, msg: '', type: 'alert', onConfirm: null });
+            useEffect(() => {
+                window.customAlert = (msg) => setModalState({ isOpen: true, msg, type: 'alert', onConfirm: null });
+                window.customConfirm = (msg, onConfirmCallback) => setModalState({ isOpen: true, msg, type: 'confirm', onConfirm: onConfirmCallback });
+            }, []);
+
+            const SidebarItem = ({ id, icon, label, subItems = [] }) => {
+                const isActive = activeTab === id || subItems.some(s => s.id === activeTab);
+                const [isExpanded, setIsExpanded] = useState(isActive);
+
+                useEffect(() => {
+                    if (subItems.some(s => s.id === activeTab)) setIsExpanded(true);
+                }, [activeTab]);
+
+                const handleParentClick = () => {
+                    if (subItems.length > 0) {
+                        setIsExpanded(!isExpanded);
+                        if (!isExpanded && !subItems.some(s => s.id === activeTab)) {
+                            setActiveTab(subItems[0].id);
+                        }
+                    } else {
+                        setActiveTab(id);
+                        if(window.innerWidth <= 1024) setIsSidebarOpen(false);
+                    }
+                };
+
+                return (
+                    <div className="space-y-1">
+                        <button onClick={handleParentClick} className={`w-full flex items-center px-4 py-3 rounded-xl transition-colors ${isActive ? 'bg-blue-50 text-blue-700 font-bold shadow-sm border border-blue-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'}`}>
+                            <i className={`${icon} text-lg w-6 text-center ${isActive ? 'text-blue-600' : 'opacity-70'} mr-3`}></i>
+                            <span className="whitespace-nowrap flex-1 text-left">{label}</span>
+                            {subItems.length > 0 && <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${isExpanded ? 'rotate-180' : ''}`}></i>}
+                        </button>
+                        {isExpanded && subItems.length > 0 && (
+                            <div className="pl-14 pr-4 space-y-1 pb-2 pt-1">
+                                {subItems.map(sub => (
+                                    <button key={sub.id} onClick={() => { setActiveTab(sub.id); if(window.innerWidth <= 1024) setIsSidebarOpen(false); }} className={`w-full flex items-center text-left px-3 py-2 text-sm rounded-lg transition-colors ${activeTab === sub.id ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                                        <div className={`w-1.5 h-1.5 rounded-full mr-2 ${activeTab === sub.id ? 'bg-blue-600' : 'bg-slate-300'}`}></div>
+                                        {sub.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="fixed inset-0 flex w-full bg-slate-50 text-slate-900 overflow-hidden">
+                    <aside className={`bg-white text-slate-800 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-50 shrink-0 transition-all duration-300 absolute lg:relative h-full ${isSidebarOpen ? 'w-72 translate-x-0' : 'w-0 -translate-x-full lg:translate-x-0 overflow-hidden'} border-r border-slate-200`}>
+                        <div className="p-6 h-auto min-h-[80px] flex items-center border-b border-slate-100 shrink-0">
+                            <h1 className="text-lg font-bold flex items-center gap-3 w-full overflow-hidden">
+                                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><i className="fa-solid fa-layer-group text-xl"></i></div>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="truncate tracking-wide text-blue-700">MASS</span>
+                                    <span className="text-[9px] text-slate-500 font-normal truncate" title="Management And Service System">Management And Service System</span>
+                                </div>
+                            </h1>
+                        </div>
+                        <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto custom-scrollbar">
+                            <SidebarItem id="main_dashboard" icon="fa-solid fa-house-chimney" label="Main Dashboard" />
+                            <div className="my-3 border-t border-slate-100"></div>
+                            <SidebarItem id="sys1_root" icon="fa-solid fa-user-gear" label="Region Assignment" subItems={[{ id: 'dashboard_sys1', label: 'ภาพรวม (Dashboard)' }, { id: 'calendar_sys1', label: 'ปฏิทิน (Calendar)' }, { id: 'table_sys1', label: 'ตารางงาน Region' }]} />
+                            <SidebarItem id="sys2_root" icon="fa-solid fa-map-location-dot" label="ควบคุมงานสำรวจ" subItems={[{ id: 'dashboard_sys2', label: 'ภาพรวม (Dashboard)' }, { id: 'calendar_sys2', label: 'ปฏิทิน (Calendar)' }, { id: 'table_sys2', label: 'ตารางงานสำรวจ' }]} />
+                            <SidebarItem id="sys3_root" icon="fa-solid fa-network-wired" label="ออเดอร์ Cross Connect" subItems={[{ id: 'dashboard_sys3', label: 'ภาพรวม (Dashboard)' }, { id: 'calendar_sys3', label: 'ปฏิทิน (Calendar)' }, { id: 'table_sys3', label: 'ตารางออเดอร์' }]} />
+                            <div className="my-3 border-t border-slate-100"></div>
+                            <SidebarItem id="combined_calendar" icon="fa-solid fa-calendar-day" label="ปฏิทินรวมทุกระบบงาน" />
+                        </nav>
+                        <div className="p-4 border-t border-slate-200 bg-white shrink-0">
+                            <button onClick={() => { setActiveTab('master_data'); if(window.innerWidth <= 1024) setIsSidebarOpen(false); }} className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl transition-colors ${activeTab === 'master_data' ? 'bg-blue-50 text-blue-700 font-bold shadow-sm border border-blue-100' : 'text-slate-600 hover:bg-slate-50 font-medium'}`}>
+                                <i className="fa-solid fa-database w-6 text-center text-blue-600"></i> <span>ฐานข้อมูล (Master Data)</span>
+                            </button>
+                        </div>
+                    </aside>
+
+                    <main className="flex-1 relative w-full h-full overflow-hidden bg-slate-50 flex flex-col">
+                        <header className="p-4 md:p-6 bg-white border-b border-slate-200 shrink-0 flex items-center gap-3">
+                            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200 lg:hidden"><i className="fa-solid fa-bars"></i></button>
+                            <h2 className="text-xl md:text-2xl font-bold text-slate-800 flex-1">
+                                {activeTab === 'main_dashboard' && 'ภาพรวมทุกระบบงาน (Main Dashboard)'}
+                                {activeTab === 'dashboard_sys1' && 'ภาพรวมระบบ Region Assignment'}
+                                {activeTab === 'dashboard_sys2' && 'ภาพรวมระบบควบคุมงานสำรวจ'}
+                                {activeTab === 'dashboard_sys3' && 'ภาพรวมออเดอร์ Cross Connect'}
+                                {activeTab === 'calendar_sys1' && 'ปฏิทินงาน Region Assignment'}
+                                {activeTab === 'calendar_sys2' && 'ปฏิทินงานสำรวจ'}
+                                {activeTab === 'calendar_sys3' && 'ปฏิทิน Cross Connect'}
+                                {activeTab === 'combined_calendar' && 'ปฏิทินรวมทุกระบบงาน'}
+                                {activeTab === 'table_sys1' && 'ตารางงาน Region Assignment'}
+                                {activeTab === 'table_sys2' && 'ตารางงานสำรวจ'}
+                                {activeTab === 'table_sys3' && 'ตารางออเดอร์ Cross Connect'}
+                                {activeTab === 'master_data' && 'จัดการฐานข้อมูล (Master Data)'}
+                            </h2>
+                            {/* Cloud Status Indicator */}
+                            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                                {isDbReady ? (
+                                    <><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div> <span className="text-[10px] font-bold text-slate-600">Cloud Synced</span></>
+                                ) : (
+                                    <><div className="w-2 h-2 rounded-full bg-orange-500"></div> <span className="text-[10px] font-bold text-slate-600">Connecting...</span></>
+                                )}
+                            </div>
+                        </header>
+                        
+                        <div className="flex-1 p-4 md:p-6 overflow-y-auto custom-scrollbar flex flex-col min-h-0 relative">
+                            {activeTab === 'main_dashboard' && <MainDashboardView tasksSys1={tasksSys1} tasksSys2={tasksSys2} tasksSys3={tasksSys3} />}
+                            {activeTab === 'dashboard_sys1' && <DashboardView systemMode="sys1" tasksSys1={tasksSys1} masterData={masterData} />}
+                            {activeTab === 'dashboard_sys2' && <DashboardView systemMode="sys2" tasksSys1={tasksSys2} masterData={masterData} />}
+                            {activeTab === 'dashboard_sys3' && <DashboardView systemMode="sys3" tasksSys1={tasksSys3} masterData={masterData} />}
+                            
+                            {activeTab === 'calendar_sys1' && <CalendarView systemMode="sys1" tasksSys1={tasksSys1} tasksSys2={tasksSys2} tasksSys3={tasksSys3} masterData={masterData} />}
+                            {activeTab === 'calendar_sys2' && <CalendarView systemMode="sys2" tasksSys1={tasksSys1} tasksSys2={tasksSys2} tasksSys3={tasksSys3} masterData={masterData} />}
+                            {activeTab === 'calendar_sys3' && <CalendarView systemMode="sys3" tasksSys1={tasksSys1} tasksSys2={tasksSys2} tasksSys3={tasksSys3} masterData={masterData} />}
+                            {activeTab === 'combined_calendar' && <CalendarView systemMode="all" tasksSys1={tasksSys1} tasksSys2={tasksSys2} tasksSys3={tasksSys3} masterData={masterData} />}
+                            
+                            {activeTab === 'table_sys1' && <DataTable title="ตารางงาน Region Assignment" columns={sys1Columns} data={tasksSys1} masterData={masterData} onAddClick={() => setOpenModalForm('sys1')} addLabel="มอบหมายงาน" btnClass="bg-blue-600 hover:bg-blue-700" onUpdateTask={handleUpdateSys1} />}
+                            {activeTab === 'table_sys2' && <DataTable title="ตารางงานสำรวจ" columns={sys2Columns} data={tasksSys2} masterData={masterData} onAddClick={() => setOpenModalForm('sys2')} addLabel="เพิ่มงานสำรวจ" btnClass="bg-amber-600 hover:bg-amber-700" onUpdateTask={handleUpdateSys2} />}
+                            {activeTab === 'table_sys3' && <DataTable title="ตาราง Cross Connect" columns={sys3Columns} data={tasksSys3} masterData={masterData} onAddClick={() => setOpenModalForm('sys3')} addLabel="เพิ่มออเดอร์" btnClass="bg-emerald-600 hover:bg-emerald-700" onUpdateTask={handleUpdateSys3} />}
+                            
+                            {activeTab === 'master_data' && (
+                                <div className="flex flex-col gap-4">
+                                    <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-xl text-indigo-800 shadow-sm flex items-start gap-3 shrink-0">
+                                        <i className="fa-solid fa-cloud mt-1 text-indigo-600 text-lg"></i>
+                                        <div>
+                                            <h3 className="font-bold text-base mb-1">ระบบจัดการฐานข้อมูล (Cloud Master Data)</h3>
+                                            <p className="text-sm text-indigo-700/80">ข้อมูลที่คุณอัปเดตที่นี่จะถูกบันทึกขึ้น Cloud ทันที และจะถูกซิงค์ไปยังอุปกรณ์อื่นๆ ที่กำลังเปิดหน้านี้อยู่แบบ Real-time</p>
+                                        </div>
+                                    </div>
+                                    <MasterDataView masterData={masterData} setMasterData={setMasterData} />
+                                </div>
+                            )}
+
+                            <FormModal isOpen={openModalForm === 'sys1'} onClose={() => setOpenModalForm(null)} title="ฟอร์มมอบหมายงาน Region" iconClass="fa-solid fa-clipboard-user" colorTheme="blue">
+                                <AssignSys1Form isModal={true} onClose={() => setOpenModalForm(null)} tasksSys1={tasksSys1} masterData={masterData} />
+                            </FormModal>
+                            <FormModal isOpen={openModalForm === 'sys2'} onClose={() => setOpenModalForm(null)} title="ฟอร์มบันทึกงานสำรวจ" iconClass="fa-solid fa-map-location-dot" colorTheme="amber">
+                                <AssignSys2Form isModal={true} onClose={() => setOpenModalForm(null)} masterData={masterData} />
+                            </FormModal>
+                            <FormModal isOpen={openModalForm === 'sys3'} onClose={() => setOpenModalForm(null)} title="เปิดออเดอร์ Cross Connect" iconClass="fa-solid fa-network-wired" colorTheme="emerald">
+                                <AssignSys3Form isModal={true} onClose={() => setOpenModalForm(null)} masterData={masterData} />
+                            </FormModal>
+                        </div>
+                    </main>
+
+                    {modalState.isOpen && (
+                        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 p-4">
+                            <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center">
+                                {modalState.type === 'alert' ? <i className="fa-solid fa-circle-info text-blue-500 text-4xl mb-4"></i> : <i className="fa-solid fa-circle-question text-amber-500 text-4xl mb-4"></i>}
+                                <p className="text-slate-800 text-sm md:text-base font-semibold mb-6 whitespace-pre-wrap">{modalState.msg}</p>
+                                <div className="flex justify-center gap-3">
+                                    {modalState.type === 'confirm' && <button onClick={() => setModalState({ ...modalState, isOpen: false })} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold">ยกเลิก</button>}
+                                    <button onClick={() => { if (modalState.type === 'confirm' && modalState.onConfirm) modalState.onConfirm(); setModalState({ ...modalState, isOpen: false }); }} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold">ตกลง</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ErrorBoundary><App /></ErrorBoundary>);
+    </script>
+</body>
+</html>
